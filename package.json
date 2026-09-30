@@ -1,5 +1,5 @@
 {
-  "name": "nextstep",
+  "name": "internradar",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -44,7 +44,6 @@
     "shadcn": "^4.21.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^5.0.2"
   }
 }

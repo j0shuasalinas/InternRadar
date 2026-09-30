@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateEligibility, filterOpportunities, getMatchReasons, isSafeExternalUrl, type Opportunity, type Preferences } from "@/lib/domain";
+import { evaluateEligibility, filterOpportunities, getMatchReasons, isSafeExternalUrl, opportunityInputSchema, preferencesSchema, type Opportunity, type Preferences } from "@/lib/domain";
 
 const profile: Preferences = {
   graduationYear: 2028,
@@ -91,6 +91,36 @@ describe("source URL validation", () => {
     expect(isSafeExternalUrl("https://careers.example.org/role")).toBe(true);
     expect(isSafeExternalUrl("javascript:alert(1)")).toBe(false);
     expect(isSafeExternalUrl("http://localhost:3000/")).toBe(false);
+    expect(isSafeExternalUrl("https://10.1.2.3/role")).toBe(false);
+    expect(isSafeExternalUrl("https://[::1]/role")).toBe(false);
     expect(isSafeExternalUrl("https://user:pass@example.org/")).toBe(false);
+  });
+
+  it("rejects invalid time zones so scheduled emails are not silently mistimed", () => {
+    expect(preferencesSchema.safeParse({ ...profile, timezone: "Mars/Olympus" }).success).toBe(false);
+  });
+
+  it("requires source notes when a published listing has broad or unclear eligibility", () => {
+    const input = {
+      company: "Fieldnote",
+      title: "Research Intern",
+      description: "Research role.",
+      eligibleClassYears: [],
+      eligibilityBasis: "unclear",
+      eligibilityNotes: null,
+      location: "Remote",
+      workMode: "remote",
+      compensationType: "unknown",
+      compensationDetails: null,
+      sourceUrl: "https://careers.example.org/research",
+      canonicalSourceId: null,
+      deadlineDate: null,
+      deadlineAt: null,
+      lastVerifiedAt: "2026-09-30T12:00:00Z",
+      status: "published",
+    };
+
+    expect(opportunityInputSchema.safeParse(input).success).toBe(false);
+    expect(opportunityInputSchema.safeParse({ ...input, eligibilityNotes: "Source does not state eligible class years." }).success).toBe(true);
   });
 });

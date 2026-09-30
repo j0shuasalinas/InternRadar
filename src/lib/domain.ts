@@ -5,6 +5,15 @@ export const applicationStatuses = ["saved", "applied", "interview", "offer", "r
 export const classYearSchema = z.enum(classYears);
 export const applicationStatusSchema = z.enum(applicationStatuses);
 
+function isTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const preferencesSchema = z.object({
   graduationYear: z.coerce.number().int().min(2026).max(2040),
   major: z.string().trim().min(1).max(100),
@@ -12,14 +21,14 @@ export const preferencesSchema = z.object({
   preferredLocations: z.array(z.string().trim().min(1).max(100)).max(20),
   remotePreference: z.enum(["any", "remote", "hybrid", "onsite"]),
   currentClassYear: classYearSchema,
-  timezone: z.string().trim().min(1).max(80).default("UTC"),
+  timezone: z.string().trim().min(1).max(80).refine(isTimeZone, "Choose a valid IANA time zone.").default("UTC"),
 });
 
 export const opportunityInputSchema = z.object({
   company: z.string().trim().min(1).max(120),
   title: z.string().trim().min(1).max(180),
   description: z.string().trim().min(1).max(8000),
-  eligibleClassYears: z.array(classYearSchema).max(5),
+  eligibleClassYears: z.array(classYearSchema).max(5).refine((years) => new Set(years).size === years.length),
   eligibilityBasis: z.enum(["listed_years", "undergraduates", "unclear"]),
   eligibilityNotes: z.string().trim().max(1000).nullable(),
   location: z.string().trim().min(1).max(160),
@@ -32,6 +41,19 @@ export const opportunityInputSchema = z.object({
   deadlineAt: z.iso.datetime({ offset: true }).nullable(),
   lastVerifiedAt: z.iso.datetime({ offset: true }),
   status: z.enum(["draft", "published", "closed"]),
+}).superRefine((opportunity, context) => {
+  if (opportunity.eligibilityBasis === "listed_years" && opportunity.eligibleClassYears.length === 0) {
+    context.addIssue({ code: "custom", path: ["eligibleClassYears"], message: "List the class years stated by the source." });
+  }
+  if (opportunity.eligibilityBasis !== "listed_years" && opportunity.eligibleClassYears.length > 0) {
+    context.addIssue({ code: "custom", path: ["eligibleClassYears"], message: "Clear listed years when eligibility is broad or unclear." });
+  }
+  if (opportunity.status === "published" && opportunity.eligibilityBasis !== "listed_years" && !opportunity.eligibilityNotes?.trim()) {
+    context.addIssue({ code: "custom", path: ["eligibilityNotes"], message: "Add the source language that supports broad or unclear eligibility." });
+  }
+  if (opportunity.deadlineDate && opportunity.deadlineAt) {
+    context.addIssue({ code: "custom", path: ["deadlineAt"], message: "Use either a date-only deadline or a precise timestamp." });
+  }
 });
 
 export type ClassYear = z.infer<typeof classYearSchema>;
@@ -57,6 +79,33 @@ export type OpportunityFilters = {
   pageSize?: number;
 };
 
+function isPrivateIpv4(hostname: string): boolean {
+  const octets = hostname.split(".").map(Number);
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return false;
+  const [first, second] = octets;
+  return first === 0 || first === 10 || first === 127 ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second !== undefined && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168) ||
+    (first === 100 && second !== undefined && second >= 64 && second <= 127) ||
+    (first === 198 && second !== undefined && (second === 18 || second === 19)) ||
+    (first !== undefined && first >= 224);
+}
+
+function isLocalHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const ipv4Mapped = normalized.startsWith("::ffff:") ? normalized.slice(7) : null;
+  const isIpv6 = normalized.includes(":");
+  return (
+    normalized === "localhost" ||
+    normalized.endsWith(".localhost") ||
+    normalized.endsWith(".local") ||
+    (isIpv6 && (normalized === "::" || normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || /^fe[89ab]/.test(normalized) || normalized.startsWith("ff"))) ||
+    isPrivateIpv4(normalized) ||
+    Boolean(ipv4Mapped && isPrivateIpv4(ipv4Mapped))
+  );
+}
+
 export function isSafeExternalUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -66,9 +115,7 @@ export function isSafeExternalUrl(value: string): boolean {
       url.protocol === "https:" &&
       !url.username &&
       !url.password &&
-      hostname !== "localhost" &&
-      !hostname.endsWith(".localhost") &&
-      !hostname.endsWith(".local")
+      !isLocalHost(hostname)
     );
   } catch {
     return false;
@@ -92,7 +139,7 @@ export function getMatchReasons(opportunity: Opportunity, profile: Preferences):
   if (eligibility === "potential") reasons.push("Source says undergraduate students; class years are not specified.");
   if (eligibility === "unclear") reasons.push("The source does not state class-year eligibility.");
 
-  if (opportunity.title.toLowerCase().includes(profile.major.toLowerCase())) {
+  if (`${opportunity.title} ${opportunity.description}`.toLowerCase().includes(profile.major.toLowerCase())) {
     reasons.push(`Role title matches ${profile.major}.`);
   }
 

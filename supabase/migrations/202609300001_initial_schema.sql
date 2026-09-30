@@ -49,6 +49,11 @@ create table public.opportunities (
   check (
     (eligibility_basis = 'listed_years' and cardinality(eligible_class_years) > 0)
     or (eligibility_basis <> 'listed_years' and cardinality(eligible_class_years) = 0)
+  ),
+  check (
+    status <> 'published'
+    or eligibility_basis = 'listed_years'
+    or nullif(btrim(eligibility_notes), '') is not null
   )
 );
 
@@ -244,7 +249,13 @@ revoke insert, update, delete on public.application_status_history from anon, au
 revoke all on public.email_deliveries from anon, authenticated;
 grant select, insert, update on public.profiles to authenticated;
 grant select, insert, update on public.notification_settings to authenticated;
-grant select on public.opportunities to anon, authenticated;
+grant select on public.opportunities to anon;
+grant select, insert, update, delete on public.opportunities to authenticated;
 grant select, insert, update, delete on public.tracked_applications to authenticated;
 grant select on public.application_status_history to authenticated;
 grant select on public.admin_members to authenticated;
+
+grant usage on schema public to service_role;
+grant all on public.profiles, public.admin_members, public.opportunities,
+  public.tracked_applications, public.application_status_history,
+  public.notification_settings, public.email_deliveries to service_role;
