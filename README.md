@@ -13,6 +13,10 @@ InternRadar is a deployable Next.js SaaS starter for college freshmen and sophom
 - Supabase-backed opportunity discovery with title/company search, class-year, location, work-mode, compensation, and deadline filters.
 - Transparent profile-fit scores and reasons, with global fit/deadline sorting before paginated results.
 - Saved roles, application statuses and history, notes, application and follow-up dates, timezone-aware overdue actions, and exact dashboard counts.
+- Opportunity proof details: curated source notes, explicit eligibility evidence, source links, and precise deadline confidence labels.
+- A guided application checklist, private examples drawn from coursework/projects/clubs/volunteering, and personal fit feedback that hides listings only for that user.
+- Authenticated iCalendar export with exact/date-only deadlines and personal follow-ups; no calendar event is fabricated for a rolling or unknown deadline.
+- A public early-career application toolkit with actionable first-application guidance.
 - Listing freshness labels for students, stale-listing review counts for admins, and explicit source re-check confirmation before publishing.
 - Opt-in weekly digests and deadline reminders through Inngest and Resend.
 - Public, canonical opportunity detail pages and focused browse collections; only current published production listings are indexable, with unclear eligibility excluded from class-year browse claims.
@@ -83,13 +87,17 @@ on conflict (user_id) do nothing;
 
 The insert must return one row. If it returns none, confirm the account exists and the email is correct. Keep admin assignment in the owner-controlled SQL workflow; it is intentionally not exposed in the app.
 
-Admins should use the original public HTTPS source URL, enter only class years explicitly named by the source, and record a note for broad or unclear eligibility. Use the date-only deadline field when the source gives a date; use the precise timestamp field only when the source gives a time and offset. Published listing saves require an explicit confirmation that the source was re-checked; editing or closing without that confirmation preserves the previous `last_verified_at`. Student-facing freshness is recent through 14 days, due for re-check from 15 to 30 days, and stale after 30 days. Stale listings remain visibly marked until an admin verifies them or closes them.
+Admins should use the original public HTTPS source URL, enter only class years explicitly named by the source, and record the source language used for broad or unclear eligibility. Choose deadline certainty that matches the source: exact timestamp, date only, rolling, explicitly not listed, or not yet verified. Exact timestamps require an offset; date-only values never get an inferred time. Published listing saves require an explicit confirmation that the source was re-checked; editing or closing without that confirmation preserves the previous `last_verified_at`. Student-facing freshness is recent through 14 days, due for re-check from 15 to 30 days, and stale after 30 days. Stale listings remain visibly marked until an admin verifies them or closes them.
+
+The application tracker offers a lightweight per-role checklist and private experience notes. These are prompts, not application requirements; only submit materials the employer actually requests. `Export calendar` downloads a private `.ics` file for signed-in users, including source-supported date/timestamp deadlines, recorded application dates, and personal follow-up dates. Rolling or unverified deadlines do not generate guessed dates. Calendar export is a download, not a continuously synchronized subscription.
 
 ## Data And Security
 
 - `profiles` stores onboarding and search preferences; an Auth trigger creates the row. Ownership is always derived from the verified Supabase user, not a submitted `user_id`.
 - `opportunities` are public-readable only when published and not demo data. Only admins can write them. Canonical source IDs are unique when present.
-- `tracked_applications` has a unique `(user_id, opportunity_id)` constraint. A database trigger appends every initial/status transition to `application_status_history`.
+- `tracked_applications` has a unique `(user_id, opportunity_id)` constraint. A database trigger appends every initial/status transition to `application_status_history`. The private checklist and experience-example notes are stored on the user's tracked application.
+- `opportunity_feedback` is private and user-scoped. Dismissal feedback only filters that user's discovery results; it never changes public listings or eligibility claims.
+- `opportunities.deadline_type` distinguishes exact timestamps, date-only deadlines, rolling deadlines, explicit no-deadline listings, and unverified deadlines. Only source-supported date/timestamp values are exported as deadline events.
 - `notification_settings` is readable/writable only by its owner. `email_deliveries` has no user-facing RLS policy and is accessible to the server role only.
 - `saved_searches` is owner-only and uniquely keyed by user plus filter JSON. `opportunity_reports` accepts one report per user/listing; admins alone can read and moderate reports.
 - Opportunity slugs are stable identifiers generated from company/title plus an ID suffix. Public SEO queries explicitly exclude demo, unpublished, and expired listings; browse pages with no matching listings are `noindex` and omitted from the sitemap.
@@ -98,7 +106,7 @@ Admins should use the original public HTTPS source URL, enter only class years e
 - Delivery rows persist a stable idempotency key before calling Resend. Retries reuse that provider key and skip already-sent rows.
 - Database failures are surfaced as errors. Production routes never quietly replace unavailable Supabase data with local fixtures.
 
-Automated policy migrations are checked into `supabase/migrations/`. Apply all pending migrations, including `202610030001_public_seo_and_saved_searches.sql`, to the configured Supabase project before using saved searches, public slugs, or listing reports. The new SEO routes require the public Supabase URL/key and a valid `NEXT_PUBLIC_APP_URL`; database failures are surfaced rather than replaced with demo content.
+Automated policy migrations are checked into `supabase/migrations/`. Apply all pending migrations, including `202610030001_public_seo_and_saved_searches.sql` and `202610040001_student_workflow_and_deadline_confidence.sql`, to the configured Supabase project before using saved searches, public slugs, private application checklists, fit feedback, or listing reports. The new SEO routes require the public Supabase URL/key and a valid `NEXT_PUBLIC_APP_URL`; database failures are surfaced rather than replaced with demo content.
 
 Public internship routes are `/internships/<slug>` and curated browse routes are `/internships/browse/<collection>`. Sitemap entries are computed from current real listings at request time. Production deployment must set `NEXT_PUBLIC_APP_URL` to the canonical HTTPS origin. Search Console verification is optional; set `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` after claiming the property. The default robots policy excludes APIs, auth, demo, unsubscribe, and private workspace routes.
 
@@ -113,7 +121,7 @@ npm run test:e2e
 npm run build
 ```
 
-Vitest covers eligibility, transparent fit scoring and ranking, freshness thresholds, timezone-aware dates, source URL checks, alert scheduling, unsubscribe-token integrity, and evidence-gated browse collections. Playwright covers class-year filtering, pagination, fit scores, source freshness, saving, application updates/history persistence, mobile overflow, and the non-sending email preview.
+Vitest covers eligibility, transparent fit scoring and ranking, freshness thresholds, timezone-aware dates, source URL checks, alert scheduling, unsubscribe-token integrity, evidence-gated browse collections, deadline confidence, and iCalendar generation. Playwright covers class-year filtering, pagination, fit scores, source freshness, saving, application updates/history persistence, public toolkit content, mobile overflow, and the non-sending email preview.
 
 ## Deploy
 

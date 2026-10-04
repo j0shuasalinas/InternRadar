@@ -2,6 +2,13 @@ import { z } from "zod";
 
 export const classYears = ["freshman", "sophomore", "junior", "senior", "graduate"] as const;
 export const applicationStatuses = ["saved", "applied", "interview", "offer", "rejected", "withdrawn"] as const;
+export const deadlineTypes = ["exact_timestamp", "date_only", "rolling", "not_listed", "unknown"] as const;
+export const applicationChecklistSchema = z.object({
+  requirementsReviewed: z.boolean(),
+  materialsPrepared: z.boolean(),
+  appliedOnSource: z.boolean(),
+}).strict();
+export const opportunityFeedbackReasonSchema = z.enum(["wrong_year", "location", "compensation", "field", "requirements", "other"]);
 export const classYearSchema = z.enum(classYears);
 export const applicationStatusSchema = z.enum(applicationStatuses);
 export const savedSearchFiltersSchema = z.object({
@@ -48,6 +55,8 @@ export const opportunityInputSchema = z.object({
   canonicalSourceId: z.string().trim().max(240).nullable(),
   deadlineDate: z.iso.date().nullable(),
   deadlineAt: z.iso.datetime({ offset: true }).nullable(),
+  deadlineType: z.enum(deadlineTypes),
+  sourcePostedDate: z.iso.date().nullable(),
   lastVerifiedAt: z.iso.datetime({ offset: true }),
   status: z.enum(["draft", "published", "closed"]),
 }).superRefine((opportunity, context) => {
@@ -63,10 +72,22 @@ export const opportunityInputSchema = z.object({
   if (opportunity.deadlineDate && opportunity.deadlineAt) {
     context.addIssue({ code: "custom", path: ["deadlineAt"], message: "Use either a date-only deadline or a precise timestamp." });
   }
+  if (opportunity.deadlineType === "date_only" && (!opportunity.deadlineDate || opportunity.deadlineAt)) {
+    context.addIssue({ code: "custom", path: ["deadlineType"], message: "A date-only deadline must include a date and no time." });
+  }
+  if (opportunity.deadlineType === "exact_timestamp" && (!opportunity.deadlineAt || opportunity.deadlineDate)) {
+    context.addIssue({ code: "custom", path: ["deadlineType"], message: "An exact deadline must include a timestamp with offset." });
+  }
+  if (["rolling", "not_listed", "unknown"].includes(opportunity.deadlineType) && (opportunity.deadlineDate || opportunity.deadlineAt)) {
+    context.addIssue({ code: "custom", path: ["deadlineType"], message: "Rolling or unspecified deadlines cannot include an invented date or time." });
+  }
 });
 
 export type ClassYear = z.infer<typeof classYearSchema>;
 export type ApplicationStatus = z.infer<typeof applicationStatusSchema>;
+export type DeadlineType = typeof deadlineTypes[number];
+export type OpportunityFeedbackReason = z.infer<typeof opportunityFeedbackReasonSchema>;
+export type ApplicationChecklist = z.infer<typeof applicationChecklistSchema>;
 export type Preferences = z.infer<typeof preferencesSchema>;
 export type OpportunityInput = z.infer<typeof opportunityInputSchema>;
 export type Eligibility = "confirmed" | "potential" | "unclear" | "not_eligible";
@@ -93,6 +114,111 @@ export type Opportunity = OpportunityInput & {
   isDemo: boolean;
   createdAt: string;
 };
+
+export function shouldEmitJobPostingSchema(
+  opportunity: Pick<Opportunity, "workMode" | "location" | "sourcePostedDate">,
+): boolean {
+  return opportunity.workMode === "remote" &&
+    /\b(us|united states)\b/i.test(opportunity.location) &&
+    opportunity.sourcePostedDate !== null;
+}
+
+export function deadlineConfidenceLabel(deadlineType: DeadlineType): string {
+  switch (deadlineType) {
+    case "exact_timestamp": return "Exact time stated by source";
+    case "date_only": return "Date stated; time not specified";
+    case "rolling": return "Rolling deadline stated by source";
+    case "not_listed": return "Deadline not listed by source";
+    case "unknown": return "Deadline details unconfirmed";
+  }
+}
+
+export function createCalendarEvents(
+  rows: Array<{
+    id: string;
+    title: string;
+    company: string;
+    deadlineType: DeadlineType;
+    deadlineDate: string | null;
+    deadlineAt: string | null;
+    appliedAt: string | null;
+    followUpDate: string | null;
+    sourceUrl: string | null;
+  }>,
+): Array<{ uid: string; title: string; date: string; allDay: boolean; description: string }> {
+  const events: Array<{ uid: string; title: string; date: string; allDay: boolean; description: string }> = [];
+  for (const row of rows) {
+    const description = [row.company, row.sourceUrl ? `Original listing: ${row.sourceUrl}` : null].filter(Boolean).join("\n");
+    if (row.deadlineType === "exact_timestamp" && row.deadlineAt) {
+      events.push({ uid: `${row.id}-deadline`, title: `Application deadline: ${row.title}`, date: row.deadlineAt, allDay: false, description });
+    } else if (row.deadlineType === "date_only" && row.deadlineDate) {
+      events.push({ uid: `${row.id}-deadline`, title: `Application deadline: ${row.title}`, date: row.deadlineDate, allDay: true, description });
+    }
+    if (row.appliedAt) {
+      events.push({ uid: `${row.id}-applied`, title: `Applied: ${row.title}`, date: row.appliedAt, allDay: false, description });
+    }
+    if (row.followUpDate) {
+      events.push({ uid: `${row.id}-follow-up`, title: `Follow up: ${row.title}`, date: row.followUpDate, allDay: true, description });
+    }
+  }
+  return events;
+}
+
+function icalEscape(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\r\n|\r|\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+}
+
+function icalDate(value: string): string {
+  return value.replaceAll("-", "");
+}
+
+function foldIcalLine(line: string): string {
+  const folded: string[] = [];
+  let part = "";
+  let bytes = 0;
+  for (const character of line) {
+    const characterBytes = new TextEncoder().encode(character).length;
+    if (bytes + characterBytes > 75) {
+      folded.push(part);
+      part = ` ${character}`;
+      bytes = 1 + characterBytes;
+    } else {
+      part += character;
+      bytes += characterBytes;
+    }
+  }
+  folded.push(part);
+  return folded.join("\r\n");
+}
+
+export function renderIcalendar(
+  events: ReturnType<typeof createCalendarEvents>,
+  timezone: string,
+): string {
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//InternRadar//Application Calendar//EN",
+    "CALSCALE:GREGORIAN",
+    `X-WR-TIMEZONE:${icalEscape(timezone)}`,
+  ];
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  for (const event of events) {
+    lines.push("BEGIN:VEVENT", `UID:${icalEscape(event.uid)}@internradar`, `DTSTAMP:${stamp}`, `SUMMARY:${icalEscape(event.title)}`);
+    if (event.allDay) {
+      const start = new Date(`${event.date}T00:00:00Z`);
+      const end = new Date(start);
+      end.setUTCDate(end.getUTCDate() + 1);
+      lines.push(`DTSTART;VALUE=DATE:${icalDate(event.date)}`, `DTEND;VALUE=DATE:${icalDate(end.toISOString().slice(0, 10))}`);
+    } else {
+      const start = new Date(event.date).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+      lines.push(`DTSTART:${start}`);
+    }
+    lines.push(`DESCRIPTION:${icalEscape(event.description)}`, "END:VEVENT");
+  }
+  lines.push("END:VCALENDAR", "");
+  return lines.map(foldIcalLine).join("\r\n");
+}
 
 export type OpportunityFilters = {
   query?: string;

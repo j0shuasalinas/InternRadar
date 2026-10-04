@@ -2,9 +2,9 @@ import Link from "next/link";
 import { ArrowRight, Bookmark, BriefcaseBusiness, Building2, CalendarDays, Check, CircleHelp, Compass, ExternalLink, Filter, MapPin, Search, Sparkles } from "lucide-react";
 import { z } from "zod";
 import { saveSearchAction } from "@/app/actions/public";
-import { saveOpportunityAction } from "@/app/actions/workspace";
+import { dismissOpportunityAction, restoreOpportunityAction, saveOpportunityAction } from "@/app/actions/workspace";
 import { requireAuthenticatedUser } from "@/lib/auth";
-import { calculateMatchFit, classYears, getListingFreshness, getMatchReasons, rankOpportunitiesByFit, type ClassYear, type Opportunity, type Preferences } from "@/lib/domain";
+import { calculateMatchFit, classYears, deadlineConfidenceLabel, getListingFreshness, getMatchReasons, rankOpportunitiesByFit, type ClassYear, type Opportunity, type Preferences } from "@/lib/domain";
 import type { OpportunityRecord, ProfileRecord } from "@/lib/database.types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -22,6 +22,7 @@ type SearchParams = Record<string, string | string[] | undefined>;
 const pageSize = 12;
 const queryBatchSize = 500;
 const maxRankedOpportunities = 5000;
+const maxPersonalFeedback = 5000;
 
 function firstValue(value: string | string[] | undefined): string | undefined {
   return typeof value === "string" ? value : undefined;
@@ -45,6 +46,8 @@ function dbOpportunity(row: OpportunityRecord): Opportunity {
     sourceUrl: row.source_url,
     deadlineDate: row.deadline_date,
     deadlineAt: row.deadline_at,
+    deadlineType: row.deadline_type,
+    sourcePostedDate: row.source_posted_date,
     lastVerifiedAt: row.last_verified_at,
     status: row.status,
     isDemo: row.is_demo,
@@ -75,12 +78,14 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
   });
   const filters = parsed.success ? parsed.data : querySchema.parse({});
   const supabase = await createSupabaseServerClient();
-  const [{ data: profileData, error: profileError }, { data: savedData, error: savedError }] = await Promise.all([
+  const [{ data: profileData, error: profileError }, { data: savedData, error: savedError }, { data: feedbackData, error: feedbackError, count: feedbackCount }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
     supabase.from("tracked_applications").select("opportunity_id").eq("user_id", user.id),
+    supabase.from("opportunity_feedback").select("opportunity_id,reason,opportunities!inner(company,title,slug)", { count: "exact" }).eq("user_id", user.id).order("created_at", { ascending: false }).range(0, maxPersonalFeedback - 1),
   ]);
 
-  if (profileError || savedError) return <DataLoadError />;
+  if (profileError || savedError || feedbackError) return <DataLoadError />;
+  if ((feedbackCount ?? 0) > maxPersonalFeedback) return <PersonalFilterLimitError />;
   const profileRow = profileData as ProfileRecord | null;
   if (!profileRow?.onboarding_completed_at || !profileRow.current_class_year || !profileRow.major || !profileRow.graduation_year) {
     return <ProfilePrompt />;
@@ -121,6 +126,12 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
   const matchingCount = count ?? firstBatch.length;
   if (matchingCount > maxRankedOpportunities) return <RankingCapacityError />;
 
+  const hiddenRows = (feedbackData ?? []) as unknown as Array<{
+    opportunity_id: string;
+    reason: string;
+    opportunities: { company: string; title: string; slug: string } | null;
+  }>;
+  const hiddenIds = new Set(hiddenRows.map(({ opportunity_id }) => opportunity_id));
   const allRecords = [...((firstBatch ?? []) as unknown as OpportunityRecord[])];
   for (let offset = queryBatchSize; offset < matchingCount; offset += queryBatchSize) {
     const { data: batch, error: batchError } = await request.range(offset, Math.min(offset + queryBatchSize - 1, matchingCount - 1));
@@ -129,7 +140,8 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
   }
 
   const rankingProfile: Preferences = { ...profile, currentClassYear: selectedYear };
-  const allOpportunities = allRecords.map(dbOpportunity);
+  const visibleRecords = allRecords.filter(({ id }) => !hiddenIds.has(id));
+  const allOpportunities = visibleRecords.map(dbOpportunity);
   const ranked = filters.sortBy === "fit"
     ? rankOpportunitiesByFit(allOpportunities, rankingProfile)
     : [...allOpportunities].sort((left, right) => {
@@ -147,7 +159,8 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
 
   return <>
     <PageHeading eyebrow="FIND YOUR FIT" title="Discover opportunities" description="Listings are curated and linked to their original source. Check the source before you apply." />
-    {firstValue(raw.error) && <p className="form-message form-error" role="alert">{firstValue(raw.error) === "search" ? "We couldn’t save that search. Check its name and filters." : "We couldn’t save that role. Refresh the list and try again."}</p>}
+    {firstValue(raw.error) && <p className="form-message form-error" role="alert">{firstValue(raw.error) === "search" ? "We couldn’t save that search. Check its name and filters." : firstValue(raw.error) === "feedback" ? "We couldn’t update your personal fit feedback. Refresh and try again." : "We couldn’t save that role. Refresh the list and try again."}</p>}
+    {firstValue(raw.message) === "hidden" && <p className="form-message form-success" role="status">Hidden from your results. You can bring it back in Preferences.</p>}
     <form className="filter-bar production-filters" action="/discover" method="get">
       <label className="search-field"><Search size={16} /><span className="sr-only">Search title or company</span><input name="q" defaultValue={filters.q} placeholder="Search title or company" /></label>
       <label className="select-field"><span className="sr-only">Eligible class year</span><select name="classYear" defaultValue={selectedYear}><option value="freshman">Freshman</option><option value="sophomore">Sophomore</option><option value="junior">Junior</option><option value="senior">Senior</option><option value="graduate">Graduate student</option></select></label>
@@ -173,7 +186,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
     <div className="results-line"><span>{ranked.length} published roles for a {selectedYear}</span><span>Open listings only · ranked by transparent fit score</span></div>
     <details className="score-method"><summary>How fit scores work</summary><p>Scores use source-stated eligibility (40 confirmed, 24 undergraduate-only, 10 unclear), major match (20), each of up to five matching skills (5 each), preferred location (10), and preferred work mode (5). A score explains profile overlap; it does not guarantee selection or eligibility beyond the source.</p></details>
     {opportunities.length ? <div className="opportunity-list">{opportunities.map((opportunity) => {
-      const record = allRecords.find(({ id }) => id === opportunity.id);
+      const record = visibleRecords.find(({ id }) => id === opportunity.id);
       if (!record) return null;
       const eligibility = opportunity.eligibilityBasis === "listed_years" ? "confirmed" : opportunity.eligibilityBasis === "undergraduates" ? "potential" : "unclear";
       const badge = eligibility === "confirmed" ? ["Confirmed eligible", "badge-confirmed"] : eligibility === "potential" ? ["Potentially relevant", "badge-potential"] : ["Eligibility unclear", "badge-unclear"];
@@ -185,9 +198,10 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
       const reasons = getMatchReasons(opportunity, rankingProfile).slice(0, 3);
       return <article className="opportunity-card" key={record.id}>
         <div className="opportunity-main"><span className="company-stamp company-stamp-large">{record.company.slice(0, 1)}</span><div className="opportunity-title-block"><span className="company-name"><Building2 size={13} /> {record.company}</span><h2><Link href={`/internships/${record.slug}`}>{record.title}</Link></h2><div className="opportunity-meta"><span><MapPin size={13} />{record.location}</span><span><BriefcaseBusiness size={13} />{record.work_mode}</span><span>{record.compensation_type === "unknown" ? "Compensation not listed" : record.compensation_details ?? record.compensation_type}</span></div></div><div className="opportunity-actions"><span className={`match-score match-score-${fit.tier}`} aria-label={`${fit.tier} match, ${fit.score} out of 100`}><strong>{fit.score}</strong><span>{fit.tier} fit</span></span><span className={`eligibility-badge ${badge[1]}`}>{eligibility === "confirmed" ? <Check size={12} /> : eligibility === "potential" ? <Sparkles size={12} /> : <CircleHelp size={12} />}{badge[0]}</span>{savedIds.has(record.id) ? <span className="save-button is-saved"><Check size={14} /> Saved</span> : <form action={saveOpportunityAction}><input type="hidden" name="opportunityId" value={record.id} /><button className="save-button" type="submit"><Bookmark size={14} /> Save role</button></form>}</div></div>
-        <div className="opportunity-bottom"><div className="match-reasons"><span className="section-label">WHY IT MATCHES</span><div>{reasons.map((reason) => <span key={reason}><Check size={12} />{reason}</span>)}</div>{record.eligibility_notes && <p className="eligibility-notes">Source note: {record.eligibility_notes}</p>}</div><div className="listing-detail"><span>Deadline <strong>{record.deadline_at ? new Date(record.deadline_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: profile.timezone }) : record.deadline_date ?? "Not listed"}</strong></span><span>Verified <strong>{new Date(record.last_verified_at).toLocaleDateString(undefined, { dateStyle: "medium", timeZone: profile.timezone })}</strong></span><span className={`listing-freshness freshness-${freshness.state}`}>{freshness.state === "stale" ? "May be outdated" : freshness.state === "due" ? "Re-check recommended" : "Recently verified"} · {verifiedAgo}</span><a href={record.source_url} target="_blank" rel="noopener noreferrer">Original source <ExternalLink size={12} /></a></div></div>
+        <div className="opportunity-bottom"><div className="match-reasons"><span className="section-label">WHY IT MATCHES</span><div>{reasons.map((reason) => <span key={reason}><Check size={12} />{reason}</span>)}</div>{record.eligibility_notes && <div className="eligibility-evidence"><strong>Curator’s eligibility note</strong><blockquote>{record.eligibility_notes}</blockquote><span>This note may summarize rather than quote the source; confirm current requirements on the employer site.</span></div>}</div><div className="listing-detail"><span>Deadline <strong>{record.deadline_at ? new Date(record.deadline_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: profile.timezone }) : record.deadline_date ?? (record.deadline_type === "rolling" ? "Rolling" : "Not listed")}</strong><small>{deadlineConfidenceLabel(record.deadline_type)}</small></span><span>Verified <strong>{new Date(record.last_verified_at).toLocaleDateString(undefined, { dateStyle: "medium", timeZone: profile.timezone })}</strong></span><span className={`listing-freshness freshness-${freshness.state}`}>{freshness.state === "stale" ? "May be outdated" : freshness.state === "due" ? "Re-check recommended" : "Recently verified"} · {verifiedAgo}</span><a href={record.source_url} target="_blank" rel="noopener noreferrer">Original source <ExternalLink size={12} /></a><details className="not-fit-details"><summary>Not a fit?</summary><form action={dismissOpportunityAction}><input type="hidden" name="opportunityId" value={record.id} /><label><span className="sr-only">Why is this not a fit?</span><select name="reason" defaultValue="other"><option value="wrong_year">Class year</option><option value="location">Location</option><option value="compensation">Compensation</option><option value="field">Field of study</option><option value="requirements">Requirements</option><option value="other">Other</option></select></label><button type="submit">Hide from my results</button></form></details></div></div>
       </article>;
     })}</div> : <EmptyResults hasFilters={Boolean(filters.q || filters.location || filters.workMode || filters.compensation || filters.deadlineBefore)} />}
+    {hiddenRows.length > 0 && <section className="hidden-opportunities"><h2>Hidden from your results</h2><p>Your fit feedback is private to your account and does not change the listing or its stated eligibility.</p><ul>{hiddenRows.map((row) => <li key={row.opportunity_id}><span>{row.opportunities?.title ?? "Opportunity"} · {row.opportunities?.company ?? "Listing unavailable"}</span><form action={restoreOpportunityAction}><input type="hidden" name="opportunityId" value={row.opportunity_id} /><button type="submit">Show again</button></form></li>)}</ul><Link href="/settings">Manage hidden opportunities in Preferences</Link></section>}
     {pageCount > 1 && <div className="pagination">{currentPage > 1 && <Link href={hrefForPage(currentPage - 1, filters)}>Previous</Link>}<span>Page {currentPage} of {pageCount}</span>{currentPage < pageCount && <Link href={hrefForPage(currentPage + 1, filters)}>Next <ArrowRight size={14} /></Link>}</div>}
   </>;
 }
@@ -202,6 +216,10 @@ function DataLoadError() {
 
 function RankingCapacityError() {
   return <div className="data-error" role="alert"><CircleHelp size={21} /><div><strong>We couldn’t rank this result set safely.</strong><p>There are more than 5,000 matching curated listings. Narrow your filters and try again; results are not shown in misleading partial-fit order.</p></div></div>;
+}
+
+function PersonalFilterLimitError() {
+  return <div className="data-error" role="alert"><CircleHelp size={21} /><div><strong>We couldn’t apply your hidden-opportunity preferences completely.</strong><p>Your account has more than 5,000 hidden listings. Restore some in Preferences before continuing so hidden roles never silently reappear.</p></div></div>;
 }
 
 function ProfilePrompt() {

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowRight, BriefcaseBusiness, CalendarDays, ExternalLink, MapPin } from "lucide-react";
+import { deadlineConfidenceLabel } from "@/lib/domain";
 import { browsePages, filterBrowseListings } from "@/lib/browse-pages";
 import { getPublishedOpportunities } from "@/lib/public-opportunities";
 import type { OpportunityRecord } from "@/lib/database.types";
@@ -60,7 +61,7 @@ export default async function InternshipBrowsePage({ params }: BrowsePageProps) 
 function PublicListingCard({ listing }: { listing: OpportunityRecord }) {
   const deadline = listing.deadline_at
     ? new Date(listing.deadline_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
-    : listing.deadline_date ?? "Not listed";
+    : listing.deadline_date ?? (listing.deadline_type === "rolling" ? "Rolling" : "Not listed");
   const eligibility = listing.eligibility_basis === "listed_years"
     ? `Source names: ${listing.eligible_class_years.join(", ")}`
     : listing.eligibility_basis === "undergraduates"
@@ -69,6 +70,6 @@ function PublicListingCard({ listing }: { listing: OpportunityRecord }) {
 
   return <article className="public-listing-card">
     <div><span className="public-listing-company">{listing.company}</span><h3><Link href={`/internships/${listing.slug}`}>{listing.title}</Link></h3><div className="public-opportunity-facts"><span><MapPin size={14} />{listing.location}</span><span><BriefcaseBusiness size={14} />{listing.work_mode}</span><span>{listing.compensation_details ?? (listing.compensation_type === "unknown" ? "Compensation not listed" : listing.compensation_type)}</span></div><p className="public-listing-eligibility">{eligibility}</p></div>
-    <div className="public-listing-deadline"><span><CalendarDays size={14} />Deadline: {deadline}</span><a href={listing.source_url} target="_blank" rel="noopener noreferrer">Original source <ExternalLink size={12} /></a></div>
+    <div className="public-listing-deadline"><span><CalendarDays size={14} />Deadline: {deadline}</span><small>{deadlineConfidenceLabel(listing.deadline_type)}</small><a href={listing.source_url} target="_blank" rel="noopener noreferrer">Original source <ExternalLink size={12} /></a></div>
   </article>;
 }

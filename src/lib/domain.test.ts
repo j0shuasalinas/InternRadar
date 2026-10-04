@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateMatchFit, dateKeyInTimeZone, evaluateEligibility, filterOpportunities, getListingFreshness, getMatchReasons, isSafeExternalUrl, matchesSavedSearch, opportunityInputSchema, preferencesSchema, rankOpportunitiesByFit, type Opportunity, type Preferences } from "@/lib/domain";
+import { calculateMatchFit, createCalendarEvents, dateKeyInTimeZone, deadlineConfidenceLabel, evaluateEligibility, filterOpportunities, getListingFreshness, getMatchReasons, isSafeExternalUrl, matchesSavedSearch, opportunityInputSchema, preferencesSchema, rankOpportunitiesByFit, renderIcalendar, shouldEmitJobPostingSchema, type Opportunity, type Preferences } from "@/lib/domain";
 
 const profile: Preferences = {
   graduationYear: 2028,
@@ -29,6 +29,8 @@ function listing(overrides: Partial<Opportunity> = {}): Opportunity {
     canonicalSourceId: "northstar-software-intern",
     deadlineDate: "2027-02-01",
     deadlineAt: null,
+    deadlineType: "date_only",
+    sourcePostedDate: null,
     lastVerifiedAt: "2026-09-29T12:00:00Z",
     status: "published",
     isDemo: false,
@@ -161,11 +163,91 @@ describe("saved search matching", () => {
       compensation: "paid",
       deadlineBefore: "2027-02-01",
     })).toBe(true);
-    expect(matchesSavedSearch(listing({ deadlineDate: null, deadlineAt: "2027-01-31T17:00:00-05:00" }), {
+    expect(matchesSavedSearch(listing({ deadlineDate: null, deadlineAt: "2027-01-31T17:00:00-05:00", deadlineType: "exact_timestamp" }), {
       deadlineBefore: "2027-01-31",
     })).toBe(true);
     expect(matchesSavedSearch(listing(), { deadlineBefore: "2027-01-31" })).toBe(false);
     expect(matchesSavedSearch(listing(), { workMode: "remote" })).toBe(false);
+  });
+});
+
+describe("deadline confidence and calendar export", () => {
+  it("labels dates without promoting them to exact times", () => {
+    expect(deadlineConfidenceLabel("date_only")).toBe("Date stated; time not specified");
+    expect(deadlineConfidenceLabel("rolling")).toBe("Rolling deadline stated by source");
+    expect(deadlineConfidenceLabel("unknown")).toBe("Deadline details unconfirmed");
+  });
+
+  describe("job posting structured data boundaries", () => {
+    it("requires an explicit source posting date and a clearly US remote location", () => {
+      expect(shouldEmitJobPostingSchema({
+        workMode: "remote",
+        location: "Remote, US",
+        sourcePostedDate: "2026-09-30",
+      })).toBe(true);
+      expect(shouldEmitJobPostingSchema({
+        workMode: "remote",
+        location: "Remote, US",
+        sourcePostedDate: null,
+      })).toBe(false);
+      expect(shouldEmitJobPostingSchema({
+        workMode: "hybrid",
+        location: "Boston, US",
+        sourcePostedDate: "2026-09-30",
+      })).toBe(false);
+    });
+  });
+
+  it("exports explicit deadlines and personal follow-ups without inventing missing deadlines", () => {
+    const events = createCalendarEvents([
+      {
+        id: "date-role",
+        title: "Research Intern",
+        company: "Fieldnote",
+        deadlineType: "date_only",
+        deadlineDate: "2027-02-01",
+        deadlineAt: null,
+        appliedAt: "2027-01-20T15:30:00.000Z",
+        followUpDate: "2027-02-05",
+        sourceUrl: "https://careers.example.org/role?a=1;b",
+      },
+      {
+        id: "rolling-role",
+        title: "Design Intern",
+        company: "Juniper",
+        deadlineType: "rolling",
+        deadlineDate: null,
+        deadlineAt: null,
+        appliedAt: null,
+        followUpDate: null,
+        sourceUrl: null,
+      },
+      {
+        id: "timed-role",
+        title: "Software Intern",
+        company: "Northstar",
+        deadlineType: "exact_timestamp",
+        deadlineDate: null,
+        deadlineAt: "2027-03-01T17:00:00-05:00",
+        appliedAt: null,
+        followUpDate: null,
+        sourceUrl: null,
+      },
+    ]);
+    const calendar = renderIcalendar(events, "America/New_York");
+    const unfoldedCalendar = calendar.replace(/\r\n /g, "");
+
+    expect(events).toHaveLength(4);
+    expect(calendar).toContain("DTSTART;VALUE=DATE:20270201");
+    expect(calendar).toContain("DTEND;VALUE=DATE:20270202");
+    expect(calendar).toContain("DTSTART:20270301T220000Z");
+    expect(calendar).toContain("SUMMARY:Follow up: Research Intern");
+    expect(calendar).toContain("SUMMARY:Applied: Research Intern");
+    expect(calendar).toContain("DTSTART:20270120T153000Z");
+    expect(unfoldedCalendar).toContain("Original listing: https://careers.example.org/role?a=1\\;b");
+    expect(calendar).not.toContain("Application deadline: Design Intern");
+    expect(calendar).toContain("X-WR-TIMEZONE:America/New_York");
+    expect(calendar.split("\r\n").every((line) => new TextEncoder().encode(line).length <= 75)).toBe(true);
   });
 });
 
@@ -225,11 +307,24 @@ describe("source URL validation", () => {
       canonicalSourceId: null,
       deadlineDate: null,
       deadlineAt: null,
+      deadlineType: "unknown",
+      sourcePostedDate: null,
       lastVerifiedAt: "2026-09-30T12:00:00Z",
       status: "published",
     };
 
     expect(opportunityInputSchema.safeParse(input).success).toBe(false);
     expect(opportunityInputSchema.safeParse({ ...input, eligibilityNotes: "Source does not state eligible class years." }).success).toBe(true);
+    expect(opportunityInputSchema.safeParse({
+      ...input,
+      eligibilityNotes: "Source does not state eligible class years.",
+      deadlineType: "date_only",
+      deadlineDate: "2027-02-01",
+    }).success).toBe(true);
+    expect(opportunityInputSchema.safeParse({
+      ...input,
+      eligibilityNotes: "Source does not state eligible class years.",
+      deadlineType: "exact_timestamp",
+    }).success).toBe(false);
   });
 });

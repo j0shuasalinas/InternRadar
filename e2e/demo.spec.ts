@@ -75,3 +75,17 @@ test("landing page links to curated directories and robots keeps private areas o
   expect(robots).toContain("/unsubscribe");
   expect(robots).toContain("/sitemap.xml");
 });
+
+test("student toolkit is public and provides practical first-application guidance", async ({ page }) => {
+  await page.goto("/toolkit");
+  await expect(page).toHaveTitle(/Early-Career Internship Toolkit/);
+  await expect(page.getByRole("heading", { name: /Your first internship application can start/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Gather evidence you already have/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Browse curated opportunities/ })).toBeVisible();
+});
+
+test("calendar export is not available to signed-out visitors", async ({ page }) => {
+  const response = await page.request.get("/api/calendar");
+  expect([401, 503]).toContain(response.status());
+  expect(response.headers()["cache-control"]).not.toContain("public");
+});

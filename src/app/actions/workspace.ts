@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { applicationStatusSchema, preferencesSchema } from "@/lib/domain";
+import { applicationChecklistSchema, applicationStatusSchema, opportunityFeedbackReasonSchema, preferencesSchema } from "@/lib/domain";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -45,7 +45,13 @@ export async function updateApplicationAction(formData: FormData): Promise<void>
   const appliedAt = dateSchema.safeParse(formData.get("appliedAt"));
   const followUpDate = dateSchema.safeParse(formData.get("followUpDate"));
   const notes = z.string().max(3000).safeParse(formData.get("notes"));
-  if (!applicationId.success || !status.success || !appliedAt.success || !followUpDate.success || !notes.success) {
+  const experienceExamples = z.string().max(3000).safeParse(formData.get("experienceExamples"));
+  const applicationChecklist = applicationChecklistSchema.safeParse({
+    requirementsReviewed: formData.get("requirementsReviewed") === "on",
+    materialsPrepared: formData.get("materialsPrepared") === "on",
+    appliedOnSource: formData.get("appliedOnSource") === "on",
+  });
+  if (!applicationId.success || !status.success || !appliedAt.success || !followUpDate.success || !notes.success || !experienceExamples.success || !applicationChecklist.success) {
     redirect("/applications?error=validation");
   }
 
@@ -55,6 +61,8 @@ export async function updateApplicationAction(formData: FormData): Promise<void>
     applied_at: appliedAt.data || null,
     follow_up_date: followUpDate.data || null,
     notes: notes.data,
+    experience_examples: experienceExamples.data,
+    application_checklist: applicationChecklist.data,
   }).eq("id", applicationId.data).eq("user_id", user.id).select("id").maybeSingle();
 
   if (error || !data) redirect("/applications?error=save");
@@ -70,6 +78,33 @@ export async function removeApplicationAction(formData: FormData): Promise<void>
     .eq("user_id", user.id);
   if (error) redirect("/applications?error=remove");
   redirect("/applications?message=removed");
+}
+
+export async function dismissOpportunityAction(formData: FormData): Promise<void> {
+  const opportunityId = uuidSchema.safeParse(formData.get("opportunityId"));
+  const reason = opportunityFeedbackReasonSchema.safeParse(formData.get("reason"));
+  if (!opportunityId.success || !reason.success) redirect("/discover?error=feedback");
+  const { supabase, user } = await currentUserOrRedirect();
+  const { data: listing, error: listingError } = await supabase.from("opportunities")
+    .select("id").eq("id", opportunityId.data).eq("status", "published").eq("is_demo", false).maybeSingle();
+  if (listingError || !listing) redirect("/discover?error=feedback");
+  const { error } = await supabase.from("opportunity_feedback").upsert({
+    user_id: user.id,
+    opportunity_id: opportunityId.data,
+    reason: reason.data,
+  }, { onConflict: "user_id,opportunity_id" });
+  if (error) redirect("/discover?error=feedback");
+  redirect("/discover?message=hidden");
+}
+
+export async function restoreOpportunityAction(formData: FormData): Promise<void> {
+  const opportunityId = uuidSchema.safeParse(formData.get("opportunityId"));
+  if (!opportunityId.success) redirect("/settings?error=feedback");
+  const { supabase, user } = await currentUserOrRedirect();
+  const { error } = await supabase.from("opportunity_feedback").delete()
+    .eq("user_id", user.id).eq("opportunity_id", opportunityId.data);
+  if (error) redirect("/settings?error=feedback");
+  redirect("/settings?message=restored");
 }
 
 export async function savePreferencesAction(formData: FormData): Promise<void> {

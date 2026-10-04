@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, BriefcaseBusiness, ExternalLink, MapPin } from "lucide-react";
 import { reportOpportunityAction } from "@/app/actions/public";
+import { deadlineConfidenceLabel, shouldEmitJobPostingSchema } from "@/lib/domain";
 import { getPublishedOpportunity } from "@/lib/public-opportunities";
 
 type InternshipPageProps = {
@@ -45,15 +46,24 @@ export default async function InternshipDetailPage({ params, searchParams }: Int
     ? new Date(listing.deadline_at).toLocaleString(undefined, { dateStyle: "long", timeStyle: "short" })
     : listing.deadline_date
       ? new Date(`${listing.deadline_date}T12:00:00Z`).toLocaleDateString(undefined, { dateStyle: "long", timeZone: "UTC" })
-      : "Not listed by the source";
-  const canUseJobPostingSchema = listing.work_mode === "remote" && /\b(us|united states)\b/i.test(listing.location);
+      : listing.deadline_type === "rolling"
+        ? "Rolling application"
+        : listing.deadline_type === "not_listed"
+          ? "No deadline listed by the source"
+          : "Deadline not verified";
+  const canUseJobPostingSchema = shouldEmitJobPostingSchema({
+    workMode: listing.work_mode,
+    location: listing.location,
+    sourcePostedDate: listing.source_posted_date,
+  });
   const jobPosting = canUseJobPostingSchema ? {
     "@context": "https://schema.org",
     "@type": "JobPosting",
     title: listing.title,
     description: listing.description,
     identifier: { "@type": "PropertyValue", name: listing.company, value: listing.canonical_source_id ?? listing.slug },
-    ...(listing.deadline_at ? { validThrough: listing.deadline_at } : listing.deadline_date ? { validThrough: `${listing.deadline_date}T23:59:59Z` } : {}),
+    datePosted: listing.source_posted_date,
+    ...(listing.deadline_at ? { validThrough: listing.deadline_at } : listing.deadline_date ? { validThrough: listing.deadline_date } : {}),
     employmentType: "INTERN",
     hiringOrganization: { "@type": "Organization", name: listing.company },
     jobLocationType: "TELECOMMUTE",
@@ -76,12 +86,12 @@ export default async function InternshipDetailPage({ params, searchParams }: Int
       <section className="public-detail-main">
         <h2>Eligibility from the source</h2>
         <p>{eligibility}</p>
-        {listing.eligibility_notes && <blockquote>{listing.eligibility_notes}</blockquote>}
+        {listing.eligibility_notes && <div className="public-source-evidence"><strong>Curator’s source note</strong><blockquote>{listing.eligibility_notes}</blockquote><p>A curator recorded this note after checking the original listing. It may summarize rather than quote the source; verify current requirements with the employer.</p></div>}
         <h2>About this internship</h2><p>{listing.description}</p>
       </section>
       <aside className="public-detail-sidebar">
         <h2>Opportunity details</h2>
-        <dl><div><dt>Application deadline</dt><dd>{deadline}</dd></div><div><dt>Last source check</dt><dd>{new Date(listing.last_verified_at).toLocaleDateString(undefined, { dateStyle: "long" })}</dd></div><div><dt>Compensation</dt><dd>{listing.compensation_type === "unknown" ? "Not listed" : listing.compensation_details ?? listing.compensation_type}</dd></div></dl>
+        <dl><div><dt>Application deadline</dt><dd>{deadline}</dd><small>{deadlineConfidenceLabel(listing.deadline_type)}</small></div>{listing.source_posted_date && <div><dt>Source posted date</dt><dd>{new Date(`${listing.source_posted_date}T12:00:00Z`).toLocaleDateString(undefined, { dateStyle: "long", timeZone: "UTC" })}</dd></div>}<div><dt>Last source check</dt><dd>{new Date(listing.last_verified_at).toLocaleDateString(undefined, { dateStyle: "long" })}</dd></div><div><dt>Compensation</dt><dd>{listing.compensation_type === "unknown" ? "Not listed" : listing.compensation_details ?? listing.compensation_type}</dd></div></dl>
         <a className="primary" href={listing.source_url} target="_blank" rel="noopener noreferrer">View original listing <ExternalLink size={14} /></a>
         <Link href="/sign-up">Save and track this role <ArrowRight size={14} /></Link>
         <details className="public-report"><summary>Report an issue with this listing</summary><form action={reportOpportunityAction}>

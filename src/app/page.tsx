@@ -94,7 +94,7 @@ export default function Home() {
         </div>
       </section>
 
-      <footer className="site-footer"><Link href="/" className="brand-lockup"><span className="brand-mark"><Radar size={17} /></span><span>intern<span className="brand-light">radar</span></span></Link><span>Built for the beginning of your career.</span><Link href={demoHref}>{process.env.NODE_ENV === "production" ? "Create an account" : "See the local demo"} <ArrowRight size={13} /></Link></footer>
+      <footer className="site-footer"><Link href="/" className="brand-lockup"><span className="brand-mark"><Radar size={17} /></span><span>intern<span className="brand-light">radar</span></span></Link><span>Built for the beginning of your career.</span><Link href="/toolkit">Early-career toolkit <ArrowRight size={13} /></Link><Link href={demoHref}>{process.env.NODE_ENV === "production" ? "Create an account" : "See the local demo"} <ArrowRight size={13} /></Link></footer>
     </main>
   );
 }

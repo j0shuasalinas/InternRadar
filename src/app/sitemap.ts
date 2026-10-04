@@ -20,6 +20,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         changeFrequency: "daily" as const,
         priority: 0.7,
       })),
+    {
+      url: new URL("/toolkit", siteUrl).toString(),
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
     ...listings.map((listing) => ({
       url: new URL(`/internships/${listing.slug}`, siteUrl).toString(),
       lastModified: listing.last_verified_at ? new Date(listing.last_verified_at) : now,

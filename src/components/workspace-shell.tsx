@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { Bell, BriefcaseBusiness, Compass, LayoutDashboard, LogOut, Radar, Settings2, ShieldCheck } from "lucide-react";
+import { Bell, BookOpenText, BriefcaseBusiness, Compass, LayoutDashboard, LogOut, Radar, Settings2, ShieldCheck } from "lucide-react";
 import { signOutAction } from "@/app/actions/auth";
 
 const links = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/discover", label: "Discover", icon: Compass },
   { href: "/applications", label: "Applications", icon: BriefcaseBusiness },
+  { href: "/toolkit", label: "Student toolkit", icon: BookOpenText },
   { href: "/settings", label: "Preferences", icon: Settings2 },
 ];
 

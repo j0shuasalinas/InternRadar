@@ -3,7 +3,7 @@ import { ArrowRight, Bookmark, CalendarDays, CircleHelp, ExternalLink, Search } 
 import { z } from "zod";
 import { removeApplicationAction, updateApplicationAction } from "@/app/actions/workspace";
 import { requireAuthenticatedUser } from "@/lib/auth";
-import { applicationStatuses } from "@/lib/domain";
+import { applicationStatuses, deadlineConfidenceLabel } from "@/lib/domain";
 import type { ApplicationStatusHistoryRecord, TrackedApplicationWithOpportunity } from "@/lib/database.types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -32,7 +32,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
   const query = safeSearch(first(params.q));
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.from("tracked_applications")
-    .select("id,opportunity_id,status,notes,applied_at,follow_up_date,created_at,updated_at,opportunities!inner(company,title,location,deadline_date,deadline_at,source_url)")
+    .select("id,opportunity_id,status,notes,applied_at,follow_up_date,application_checklist,experience_examples,created_at,updated_at,opportunities!inner(company,title,location,deadline_date,deadline_at,deadline_type,source_url)")
     .eq("user_id", user.id)
     .order("updated_at", { ascending: false })
     .limit(200);
@@ -61,7 +61,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
   });
 
   return <>
-    <PageHeading eyebrow="KEEP THE MOMENTUM" title="Application tracker" description="Update a status, keep a note, or choose a personal follow-up date." action={<span className="tracked-total"><strong>{rows.length}</strong> tracked</span>} />
+    <PageHeading eyebrow="KEEP THE MOMENTUM" title="Application tracker" description="Take one practical next step, save your notes, and add your dates to your calendar." action={<div className="tracker-heading-actions"><a className="button button-quiet" href="/api/calendar"><CalendarDays size={14} /> Export calendar</a><span className="tracked-total"><strong>{rows.length}</strong> tracked</span></div>} />
     {first(params.error) && <p className="form-message form-error" role="alert">We couldn’t save that update. Check the fields and try again.</p>}
     {first(params.message) && <p className="form-message form-success" role="status">Your tracker was updated.</p>}
     <form className="tracker-toolbar" action="/applications" method="get"><label className="search-field"><Search size={16} /><span className="sr-only">Search tracked roles</span><input name="q" defaultValue={query} placeholder="Search tracked roles" /></label><label className="select-field"><span className="sr-only">Filter by application status</span><select name="status" defaultValue={status?.success ? status.data : ""}><option value="">All statuses</option>{applicationStatuses.map((value) => <option value={value} key={value}>{value[0]?.toUpperCase()}{value.slice(1)}</option>)}</select></label><button className="button button-dark" type="submit"><Search size={14} /> Search</button></form>
@@ -73,7 +73,15 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
           <input type="hidden" name="applicationId" value={row.id} />
           <div className="tracker-fields"><label>Application status<select name="status" defaultValue={row.status}>{applicationStatuses.map((value) => <option value={value} key={value}>{value[0]?.toUpperCase()}{value.slice(1)}</option>)}</select></label><label>Application date<input name="appliedAt" type="date" defaultValue={row.applied_at ?? ""} /></label><label>Follow-up date<input name="followUpDate" type="date" defaultValue={row.follow_up_date ?? ""} /></label></div>
           <label className="notes-field">Private notes<textarea name="notes" defaultValue={row.notes} maxLength={3000} rows={2} placeholder="What did you send? Who should you follow up with?" /></label>
-          <div className="tracker-footer"><span className={`status-pill status-${row.status}`}>{row.status}</span><span><CalendarDays size={12} /> Deadline: {displayDeadline(listing?.deadline_date ?? null, listing?.deadline_at ?? null)}</span><button className="inline-link" type="submit">Save changes <ArrowRight size={13} /></button></div>
+          <details className="application-next-steps" open>
+            <summary>Your application checklist</summary>
+            <label><input type="checkbox" name="requirementsReviewed" defaultChecked={row.application_checklist.requirementsReviewed} /> Review the eligibility and application requirements on the employer site</label>
+            <label><input type="checkbox" name="materialsPrepared" defaultChecked={row.application_checklist.materialsPrepared} /> Prepare the resume, portfolio, or materials requested</label>
+            <label><input type="checkbox" name="appliedOnSource" defaultChecked={row.application_checklist.appliedOnSource} /> Submit through the original employer site</label>
+            <label className="notes-field">Coursework, projects, clubs, or volunteering that show relevant skills<textarea name="experienceExamples" defaultValue={row.experience_examples} maxLength={3000} rows={3} placeholder="Example: class project using SQL; robotics club prototype; volunteer data cleanup." /></label>
+            <Link href="/toolkit">See the early-career application toolkit <ArrowRight size={13} /></Link>
+          </details>
+          <div className="tracker-footer"><span className={`status-pill status-${row.status}`}>{row.status}</span>{listing && <span><CalendarDays size={12} /> Deadline: {displayDeadline(listing.deadline_date, listing.deadline_at)} · {deadlineConfidenceLabel(listing.deadline_type)}</span>}<button className="inline-link" type="submit">Save changes <ArrowRight size={13} /></button></div>
         </form>
         <StatusHistory entries={historyByApplication.get(row.id) ?? []} />
         <form action={removeApplicationAction} className="remove-tracked-form"><input type="hidden" name="applicationId" value={row.id} /><button className="text-button" type="submit">Remove from tracker</button></form>

@@ -21,6 +21,7 @@ export default function robots(): MetadataRoute.Robots {
         "/admin",
         "/demo",
         "/unsubscribe",
+        "/api/calendar",
       ],
     },
     sitemap: new URL("/sitemap.xml", getSiteUrl()).toString(),

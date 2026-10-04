@@ -21,7 +21,7 @@ type PreferenceRow = {
 type TrackedRow = {
   opportunity_id: string;
   status: string;
-  opportunities: Pick<OpportunityRecord, "slug" | "company" | "title" | "location" | "work_mode" | "eligibility_basis" | "eligible_class_years" | "eligibility_notes" | "deadline_date" | "deadline_at" | "source_url"> | null;
+  opportunities: Pick<OpportunityRecord, "slug" | "company" | "title" | "location" | "work_mode" | "eligibility_basis" | "eligible_class_years" | "eligibility_notes" | "deadline_date" | "deadline_at" | "deadline_type" | "source_url"> | null;
 };
 
 const PAGE_SIZE = 100;
@@ -58,6 +58,8 @@ function mapOpportunity(row: OpportunityRecord): Opportunity {
     sourceUrl: row.source_url,
     deadlineDate: row.deadline_date,
     deadlineAt: row.deadline_at,
+    deadlineType: row.deadline_type,
+    sourcePostedDate: row.source_posted_date,
     lastVerifiedAt: row.last_verified_at,
     status: row.status,
     isDemo: row.is_demo,
@@ -70,7 +72,14 @@ function mapTrackedOpportunity(row: NonNullable<TrackedRow["opportunities"]>, ti
     ? new Date(row.deadline_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: timezone })
     : row.deadline_date
       ? new Date(`${row.deadline_date}T12:00:00Z`).toLocaleDateString("en-US", { dateStyle: "medium", timeZone: "UTC" })
-      : "Not listed";
+      : row.deadline_type === "rolling"
+        ? "Rolling deadline, according to source"
+        : row.deadline_type === "not_listed"
+          ? "No deadline listed by source"
+          : "Deadline not verified";
+  const deadlineWithConfidence = row.deadline_type === "date_only"
+    ? `${deadline} (date only; source does not state a time)`
+    : deadline;
   const eligibility = row.eligibility_basis === "listed_years"
     ? `Source names: ${row.eligible_class_years.join(", ")}`
     : row.eligibility_basis === "undergraduates"
@@ -81,7 +90,7 @@ function mapTrackedOpportunity(row: NonNullable<TrackedRow["opportunities"]>, ti
     title: row.title,
     location: row.location,
     workMode: row.work_mode,
-    deadline,
+    deadline: deadlineWithConfidence,
     detailUrl: new URL(`/internships/${row.slug}`, getSiteUrl()).toString(),
     sourceUrl: row.source_url,
     eligibility,
@@ -296,6 +305,7 @@ async function sendWeeklyDigest(event: AlertEvent) {
     eligibility_notes: opportunity.eligibilityNotes,
     deadline_date: opportunity.deadlineDate,
     deadline_at: opportunity.deadlineAt,
+    deadline_type: opportunity.deadlineType,
     source_url: opportunity.sourceUrl,
   }, context.profile.timezone));
   const unsubscribe = unsubscribeUrl(event.userId);

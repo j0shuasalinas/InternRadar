@@ -45,6 +45,8 @@ export async function saveOpportunityAdminAction(formData: FormData): Promise<vo
     canonicalSourceId: String(formData.get("canonicalSourceId") ?? "").trim() || null,
     deadlineDate: String(formData.get("deadlineDate") ?? "") || null,
     deadlineAt: String(formData.get("deadlineAt") ?? "") || null,
+    deadlineType: formData.get("deadlineType"),
+    sourcePostedDate: String(formData.get("sourcePostedDate") ?? "") || null,
     lastVerifiedAt: new Date().toISOString(),
     status: formData.get("status"),
   });
@@ -76,6 +78,8 @@ export async function saveOpportunityAdminAction(formData: FormData): Promise<vo
     source_url: opportunity.sourceUrl,
     deadline_date: opportunity.deadlineDate,
     deadline_at: opportunity.deadlineAt,
+    deadline_type: opportunity.deadlineType,
+    source_posted_date: opportunity.sourcePostedDate,
     last_verified_at: lastVerifiedAt,
     status: opportunity.status,
     closed_at: opportunity.status === "closed" ? new Date().toISOString() : null,
