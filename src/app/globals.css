@@ -660,12 +660,100 @@
   .admin-listing-mode { color: #89959a; font-size: 8px; font-weight: 730; letter-spacing: .4px; }
   .admin-listing .admin-form { padding: 6px 0 16px; }
   .admin-empty { color: #78858b; font-size: 10px; }
+  .browse-discovery { max-width: 1120px; display: grid; grid-template-columns: .8fr 1.2fr; gap: 45px; margin: 0 auto; padding: 54px 42px 58px; border-bottom: 1px solid #e6e9e7; }
+  .browse-discovery-heading h2 { margin: 9px 0; color: var(--navy); font-size: 25px; letter-spacing: -1px; }
+  .browse-discovery-heading p { max-width: 350px; margin: 0; color: #748087; font-size: 12px; line-height: 1.7; }
+  .browse-discovery-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .browse-discovery-links a { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 12px; border: 1px solid #e5eae7; border-radius: 5px; color: #30434c; background: #fff; font-size: 11px; font-weight: 650; text-decoration: none; }
+  .browse-discovery-links a:hover { border-color: #aec8e2; color: var(--blue); }
+  .browse-discovery-links a:focus-visible, .public-opportunity-page a:focus-visible, .public-opportunity-page button:focus-visible { outline: 3px solid #75aee4; outline-offset: 3px; }
+  .public-opportunity-page { width: min(100% - 36px, 1050px); margin: 0 auto; color: #20343e; }
+  .public-opportunity-header { min-height: 76px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e9edeb; }
+  .public-opportunity-header .brand-lockup { color: #263d4a; text-decoration: none; }
+  .public-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 26px 0 30px; color: #859096; font-size: 11px; }
+  .public-breadcrumb a { display: inline-flex; align-items: center; gap: 4px; color: #557383; text-decoration: none; }
+  .public-listing-list { display: grid; gap: 10px; }
+  .public-listing-card { display: flex; justify-content: space-between; gap: 22px; padding: 19px; border: 1px solid #e2e8e5; border-radius: 7px; background: #fff; }
+  .public-listing-company { color: #567282; font-size: 11px; font-weight: 700; }
+  .public-listing-card h3 { margin: 4px 0 10px; color: #20343e; font-size: 16px; letter-spacing: -.25px; }
+  .public-listing-card h3 a { color: inherit; text-decoration: none; }
+  .public-listing-card h3 a:hover { color: var(--blue); }
+  .public-opportunity-facts { display: flex; flex-wrap: wrap; gap: 12px; color: #6d7b81; font-size: 10px; }
+  .public-opportunity-facts span, .public-listing-deadline span, .public-listing-deadline a { display: inline-flex; align-items: center; gap: 5px; }
+  .public-listing-eligibility { margin: 12px 0 0; color: #62736d; font-size: 10px; }
+  .public-listing-deadline { min-width: 145px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 11px; color: #687980; font-size: 10px; }
+  .public-listing-deadline a { color: #3975a7; text-decoration: none; }
+  .browse-hero { max-width: 760px; margin: 46px 0 34px; }
+  .browse-hero h1 { margin: 9px 0 12px; color: #20343e; font-size: clamp(30px, 5vw, 45px); letter-spacing: -1.7px; }
+  .browse-hero > p:not(.browse-data-note) { max-width: 720px; color: #65757b; font-size: 14px; line-height: 1.75; }
+  .browse-data-note { color: #819096; font-size: 10px; line-height: 1.6; }
+  .browse-results-heading { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 15px; }
+  .browse-results-heading h2 { margin: 5px 0 0; color: #233943; font-size: 18px; }
+  .public-detail-hero { margin: 36px 0 25px; padding: 29px; border: 1px solid #e1e8e5; border-radius: 8px; background: linear-gradient(135deg, #fff 0%, #f4f8f7 100%); }
+  .public-detail-hero h1 { max-width: 800px; margin: 10px 0 5px; color: #20343e; font-size: clamp(30px, 5vw, 42px); letter-spacing: -1.6px; }
+  .public-detail-company { margin: 0; color: #60767f; font-size: 15px; font-weight: 650; }
+  .public-detail-facts { display: flex; flex-wrap: wrap; gap: 11px; margin-top: 20px; }
+  .public-detail-facts > span { min-height: 33px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid #e3eae7; border-radius: 4px; color: #536970; background: #fff; font-size: 10px; }
+  .public-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; align-items: start; gap: 20px; }
+  .public-detail-main, .public-detail-sidebar { padding: 22px; border: 1px solid #e3e8e6; border-radius: 7px; background: #fff; }
+  .public-detail-main h2, .public-detail-sidebar h2 { margin: 0 0 12px; color: #2a4049; font-size: 15px; }
+  .public-detail-main > p { color: #68777c; font-size: 12px; line-height: 1.8; white-space: pre-line; }
+  .public-detail-sidebar { display: grid; gap: 13px; }
+  .public-detail-sidebar dl { display: grid; gap: 11px; margin: 0; }
+  .public-detail-sidebar dl div { display: grid; gap: 3px; }
+  .public-detail-sidebar dt { color: #879196; font-size: 9px; text-transform: uppercase; letter-spacing: .5px; }
+  .public-detail-sidebar dd { margin: 0; color: #3e535c; font-size: 11px; line-height: 1.5; }
+  .public-detail-sidebar > a, .public-detail-sidebar button { min-height: 38px; display: inline-flex; justify-content: center; align-items: center; gap: 7px; padding: 0 12px; border: 1px solid #d8e3e0; border-radius: 4px; color: #345e76; background: #fff; font-size: 10px; font-weight: 650; text-decoration: none; cursor: pointer; }
+  .public-detail-sidebar > a.primary { border-color: #23404e; color: #fff; background: #23404e; }
+  .public-report { padding-top: 14px; border-top: 1px solid #ebefed; }
+  .public-report summary { color: #5e737a; font-size: 10px; cursor: pointer; }
+  .public-report form { display: grid; gap: 9px; margin-top: 11px; }
+  .public-report label { display: grid; gap: 5px; color: #52656c; font-size: 10px; }
+  .public-report select, .public-report textarea { width: 100%; padding: 8px; border: 1px solid #dce4e1; border-radius: 4px; color: #334a53; background: white; font: inherit; }
+  .public-report textarea { min-height: 68px; resize: vertical; }
+  .public-opportunity-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin: 28px 0 40px; padding-top: 17px; border-top: 1px solid #e8edeb; color: #849096; font-size: 10px; }
+  .public-opportunity-footer a { color: #4b7182; text-decoration: none; }
+  .public-opportunity-footer span { margin-left: auto; }
+  .saved-search-list { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+  .saved-search-list li { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px; border: 1px solid #e5eae8; border-radius: 5px; }
+  .saved-search-list li > span { min-width: 0; display: grid; gap: 4px; }
+  .saved-search-list strong { color: #374e57; font-size: 11px; }
+  .saved-search-list small { overflow: hidden; color: #7b898d; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+  .saved-search-empty { color: #77868b; font-size: 10px; }
+  .save-search-form { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin: -7px 0 13px; padding: 11px 13px; border: 1px solid #e2e8e5; border-radius: 5px; background: #fbfcfb; }
+  .save-search-form > span { color: #6e7b80; font-size: 10px; }
+  .save-search-form label { flex: 1 1 180px; }
+  .save-search-form input { width: 100%; min-height: 32px; padding: 6px 8px; border: 1px solid #dce3e2; border-radius: 4px; color: #30444d; background: white; font-size: 10px; }
+  .save-search-form .button { min-height: 32px; font-size: 9px; }
+  .save-search-form > a { color: #4f7485; font-size: 9px; text-decoration: none; }
+  .report-review-list { display: grid; }
+  .report-open-count { margin: -6px 0 12px; color: #76858a; font-size: 9px; }
+  .report-review-card { display: grid; grid-template-columns: minmax(0, 1fr) 170px; align-items: start; gap: 18px; padding: 14px 0; border-top: 1px solid #edf0ef; }
+  .report-review-card h3 { margin: 7px 0 4px; font-size: 12px; }
+  .report-review-card h3 a { color: #31586e; text-decoration: none; }
+  .report-review-card p, .report-review-card blockquote { margin: 4px 0; color: #738187; font-size: 9px; line-height: 1.5; }
+  .report-review-card blockquote { padding-left: 9px; border-left: 2px solid #dbe4e0; }
+  .report-review-card form { display: grid; gap: 7px; }
+  .report-review-card form label { display: grid; gap: 4px; color: #68777c; font-size: 9px; }
+  .report-review-card form select { min-height: 31px; padding: 5px; border: 1px solid #dce3e2; border-radius: 4px; color: #30444d; background: white; font-size: 9px; }
+  .report-review-card form .button { min-height: 31px; font-size: 9px; }
+  .status-open { background: #fff1d8; color: #805f22; }
+  .status-reviewed { background: #e8eef8; color: #435c83; }
+  .status-resolved { background: #e5f2e9; color: #28704c; }
   .workspace-skeleton { display: grid; gap: 12px; padding-top: 14px; }
   .skeleton-block { min-height: 56px; border-radius: 5px; background: #e9edeb; animation: skeleton-pulse 1.2s ease-in-out infinite alternate; }
   .skeleton-block.large { min-height: 145px; }
   @keyframes skeleton-pulse { to { opacity: .55; } }
 
   @media (max-width: 760px) {
+    .browse-discovery { grid-template-columns: 1fr; gap: 20px; padding: 38px 21px; }
+    .public-detail-grid { grid-template-columns: 1fr; }
+    .public-detail-sidebar { grid-row: 1; }
+    .public-listing-card { flex-direction: column; }
+    .public-listing-deadline { min-width: auto; flex-direction: row; justify-content: space-between; }
+    .public-detail-hero, .public-detail-main, .public-detail-sidebar { padding: 18px; }
+    .browse-results-heading { align-items: flex-start; flex-direction: column; }
+    .public-opportunity-footer span { width: 100%; margin-left: 0; }
     .auth-shell, .onboarding-shell { padding-right: 17px; padding-left: 17px; }
     .auth-header, .onboarding-header { min-height: 64px; }
     .auth-card, .onboarding-card { padding: 21px; }
@@ -677,10 +765,18 @@
     .production-filters .search-field { min-width: 100%; }
     .production-filters .select-field, .production-filters .location-field, .production-filters .date-filter { flex: 1 1 calc(50% - 5px); width: auto; }
     .admin-create-panel, .admin-listings { padding: 13px; }
+    .report-review-card { grid-template-columns: 1fr; }
     .admin-listing-mode { display: none; }
   }
 
   @media (max-width: 430px) {
+    .browse-discovery-links { grid-template-columns: 1fr; }
+    .public-opportunity-page { width: min(100% - 26px, 1050px); }
+    .public-opportunity-header { min-height: 62px; }
+    .public-opportunity-header .button { padding: 0 8px; font-size: 9px; }
+    .public-detail-facts { gap: 6px; }
+    .public-detail-facts > span { font-size: 9px; }
+    .public-listing-deadline { align-items: flex-start; flex-direction: column; }
     .auth-back { font-size: 9px; }
     .auth-card h1, .onboarding-card h1 { font-size: 22px; }
     .onboarding-header > span { font-size: 7px; }

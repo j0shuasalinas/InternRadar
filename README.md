@@ -15,6 +15,10 @@ InternRadar is a deployable Next.js SaaS starter for college freshmen and sophom
 - Saved roles, application statuses and history, notes, application and follow-up dates, timezone-aware overdue actions, and exact dashboard counts.
 - Listing freshness labels for students, stale-listing review counts for admins, and explicit source re-check confirmation before publishing.
 - Opt-in weekly digests and deadline reminders through Inngest and Resend.
+- Public, canonical opportunity detail pages and focused browse collections; only current published production listings are indexable, with unclear eligibility excluded from class-year browse claims.
+- Authenticated listing reports with an admin review queue.
+- Saved searches with separate opt-in weekly email matches; tracked listings are excluded from new-opportunity messages.
+- Generated sitemap and robots policy, Open Graph/Twitter defaults, optional Google Search Console verification, and `noindex` metadata for account/workspace pages.
 - Admin-only opportunity create/edit/publish/close tools.
 
 Eligibility labels are evidence-based. `Confirmed eligible` requires the source to name the student's class year. `Potentially relevant` is used when the source explicitly says undergraduate students but does not name years. `Eligibility unclear` means the source does not state class-year eligibility. A role that explicitly excludes the student's year is not shown for that year. Preference reasons use only the saved major, skills, location, and work-mode fields.
@@ -47,6 +51,7 @@ The migration creates the schema and RLS policies. Local fictional SQL examples 
 Copy `.env.example` to `.env.local` and configure only the services you use.
 
 - `NEXT_PUBLIC_APP_URL`: public origin used in auth and unsubscribe links (`http://localhost:3000` locally).
+- `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION`: optional Search Console verification token. Add the token from Google Search Console in Vercel when verifying the production domain.
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: browser-safe Supabase project settings.
 - `SUPABASE_SERVICE_ROLE_KEY`: server-only key for background jobs and unsubscribe processing. Never add a `NEXT_PUBLIC_` prefix.
 - `RESEND_API_KEY`, `RESEND_FROM_EMAIL`: Resend credentials; verify the sender domain in Resend before production delivery.
@@ -86,12 +91,16 @@ Admins should use the original public HTTPS source URL, enter only class years e
 - `opportunities` are public-readable only when published and not demo data. Only admins can write them. Canonical source IDs are unique when present.
 - `tracked_applications` has a unique `(user_id, opportunity_id)` constraint. A database trigger appends every initial/status transition to `application_status_history`.
 - `notification_settings` is readable/writable only by its owner. `email_deliveries` has no user-facing RLS policy and is accessible to the server role only.
+- `saved_searches` is owner-only and uniquely keyed by user plus filter JSON. `opportunity_reports` accepts one report per user/listing; admins alone can read and moderate reports.
+- Opportunity slugs are stable identifiers generated from company/title plus an ID suffix. Public SEO queries explicitly exclude demo, unpublished, and expired listings; browse pages with no matching listings are `noindex` and omitted from the sitemap.
 - Unsubscribe tokens are HMAC-signed, expire after 45 days, and carry the user ID inside the signed payload. The browser cannot submit a target user ID. Opening a link does not change settings; a POST confirmation does.
 - Email jobs run hourly, select each opted-in user's local 9 a.m. using their validated IANA time zone, and send the weekly digest on local Monday. Jobs page through at most 10,000 opted-in profiles per hourly sweep, process at most 250 opportunities and 1,000 tracked rows per recipient, and batch deadline sends. A digest is skipped if the tracked-row bound prevents a complete exclusion check.
 - Delivery rows persist a stable idempotency key before calling Resend. Retries reuse that provider key and skip already-sent rows.
 - Database failures are surfaced as errors. Production routes never quietly replace unavailable Supabase data with local fixtures.
 
-Automated policy migrations are checked into `supabase/migrations/`. The current migration was parsed with PostgreSQL's parser, but it still needs to be applied and smoke-tested against a configured Supabase project before production deployment.
+Automated policy migrations are checked into `supabase/migrations/`. Apply all pending migrations, including `202610030001_public_seo_and_saved_searches.sql`, to the configured Supabase project before using saved searches, public slugs, or listing reports. The new SEO routes require the public Supabase URL/key and a valid `NEXT_PUBLIC_APP_URL`; database failures are surfaced rather than replaced with demo content.
+
+Public internship routes are `/internships/<slug>` and curated browse routes are `/internships/browse/<collection>`. Sitemap entries are computed from current real listings at request time. Production deployment must set `NEXT_PUBLIC_APP_URL` to the canonical HTTPS origin. Search Console verification is optional; set `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` after claiming the property. The default robots policy excludes APIs, auth, demo, unsubscribe, and private workspace routes.
 
 ## Checks
 
@@ -104,7 +113,7 @@ npm run test:e2e
 npm run build
 ```
 
-Vitest covers eligibility, transparent fit scoring and ranking, freshness thresholds, timezone-aware dates, source URL checks, alert scheduling, and unsubscribe-token integrity. Playwright covers class-year filtering, pagination, fit scores, source freshness, saving, application updates/history persistence, mobile overflow, and the non-sending email preview.
+Vitest covers eligibility, transparent fit scoring and ranking, freshness thresholds, timezone-aware dates, source URL checks, alert scheduling, unsubscribe-token integrity, and evidence-gated browse collections. Playwright covers class-year filtering, pagination, fit scores, source freshness, saving, application updates/history persistence, mobile overflow, and the non-sending email preview.
 
 ## Deploy
 

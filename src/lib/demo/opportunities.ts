@@ -3,6 +3,7 @@ import type { Opportunity } from "@/lib/domain";
 export const demoOpportunities: Opportunity[] = [
   {
     id: "demo-northstar-software",
+    slug: "demo-northstar-software",
     company: "Northstar Labs (fictional)",
     title: "Software Engineering Intern",
     description: "Build TypeScript and SQL tools that help student research teams work with open data.",
@@ -24,6 +25,7 @@ export const demoOpportunities: Opportunity[] = [
   },
   {
     id: "demo-fieldnote-research",
+    slug: "demo-fieldnote-research",
     company: "Fieldnote (fictional)",
     title: "Data Research Intern",
     description: "Use Python to clean survey datasets and summarize findings for an education research team.",
@@ -45,6 +47,7 @@ export const demoOpportunities: Opportunity[] = [
   },
   {
     id: "demo-juniper-design",
+    slug: "demo-juniper-design",
     company: "Juniper Studio (fictional)",
     title: "Product Design Intern",
     description: "Prototype accessible tools, interview users, and share design explorations with a small product team.",
@@ -66,6 +69,7 @@ export const demoOpportunities: Opportunity[] = [
   },
   {
     id: "demo-copperfield-mechanical",
+    slug: "demo-copperfield-mechanical",
     company: "Copperfield Robotics (fictional)",
     title: "Mechanical Engineering Intern",
     description: "Test robotic prototypes and document design changes with the hardware team.",

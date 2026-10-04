@@ -61,3 +61,17 @@ test("demo and email preview remain usable on a narrow viewport", async ({ page 
   await page.goto("/api/email-preview?kind=weekly_digest");
   await expect(page.getByText("DEVELOPMENT PREVIEW · FICTIONAL DATA · NOTHING WAS SENT")).toBeVisible();
 });
+
+test("landing page links to curated directories and robots keeps private areas out of discovery", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Start with what fits." })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Internships for freshmen" })).toHaveAttribute("href", "/internships/browse/freshman-internships");
+  await expect(page.getByRole("link", { name: "Paid sophomore internships" })).toHaveAttribute("href", "/internships/browse/paid-sophomore-internships");
+
+  await page.goto("/robots.txt");
+  const robots = await page.locator("body").innerText();
+  expect(robots).toContain("/api");
+  expect(robots).toContain("/dashboard");
+  expect(robots).toContain("/unsubscribe");
+  expect(robots).toContain("/sitemap.xml");
+});

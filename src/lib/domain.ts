@@ -4,6 +4,15 @@ export const classYears = ["freshman", "sophomore", "junior", "senior", "graduat
 export const applicationStatuses = ["saved", "applied", "interview", "offer", "rejected", "withdrawn"] as const;
 export const classYearSchema = z.enum(classYears);
 export const applicationStatusSchema = z.enum(applicationStatuses);
+export const savedSearchFiltersSchema = z.object({
+  query: z.string().trim().max(100).optional(),
+  classYear: classYearSchema.optional(),
+  location: z.string().trim().max(100).optional(),
+  workMode: z.enum(["remote", "hybrid", "onsite"]).optional(),
+  compensation: z.enum(["paid", "unpaid", "unknown"]).optional(),
+  deadlineBefore: z.iso.date().optional(),
+}).strict();
+export type SavedSearchFilters = z.infer<typeof savedSearchFiltersSchema>;
 
 function isTimeZone(value: string): boolean {
   try {
@@ -80,6 +89,7 @@ export type ListingFreshness = {
 
 export type Opportunity = OpportunityInput & {
   id: string;
+  slug: string;
   isDemo: boolean;
   createdAt: string;
 };
@@ -175,6 +185,19 @@ export function getMatchReasons(opportunity: Opportunity, profile: Preferences):
   }
 
   return reasons;
+}
+
+export function matchesSavedSearch(opportunity: Opportunity, filters: SavedSearchFilters): boolean {
+  if (filters.query && !`${opportunity.title} ${opportunity.company}`.toLowerCase().includes(filters.query.toLowerCase())) return false;
+  if (filters.classYear && opportunity.eligibilityBasis === "listed_years" && !opportunity.eligibleClassYears.includes(filters.classYear)) return false;
+  if (filters.location && !opportunity.location.toLowerCase().includes(filters.location.toLowerCase())) return false;
+  if (filters.workMode && opportunity.workMode !== filters.workMode) return false;
+  if (filters.compensation && opportunity.compensationType !== filters.compensation) return false;
+  if (filters.deadlineBefore) {
+    const deadline = opportunity.deadlineAt?.slice(0, 10) ?? opportunity.deadlineDate;
+    if (!deadline || deadline > filters.deadlineBefore) return false;
+  }
+  return true;
 }
 
 export function calculateMatchFit(opportunity: Opportunity, profile: Preferences): MatchFit {

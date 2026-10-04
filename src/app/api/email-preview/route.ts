@@ -13,6 +13,7 @@ export function GET(request: NextRequest) {
     workMode: sample.workMode,
     deadline: sample.deadlineDate ?? "Not listed",
     sourceUrl: sample.sourceUrl,
+    detailUrl: `http://localhost:3000/internships/${sample.slug}`,
     eligibility: "Fictional sample: source explicitly names freshmen and sophomores.",
   };
   const unsubscribeUrl = "http://localhost:3000/unsubscribe?token=preview-only";

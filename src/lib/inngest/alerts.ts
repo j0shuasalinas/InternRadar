@@ -2,10 +2,11 @@ import { createHash } from "node:crypto";
 import { Resend } from "resend";
 import { inngest } from "@/lib/inngest/client";
 import { createUnsubscribeToken, getLocalAlertTime, isDigestHour, isReminderHour, localWeekKey } from "@/lib/alerts";
-import { getMatchReasons, evaluateEligibility, type Opportunity, type Preferences } from "@/lib/domain";
-import type { OpportunityRecord, ProfileRecord } from "@/lib/database.types";
+import { getMatchReasons, evaluateEligibility, matchesSavedSearch, savedSearchFiltersSchema, type Opportunity, type Preferences } from "@/lib/domain";
+import type { OpportunityRecord, ProfileRecord, SavedSearchRecord } from "@/lib/database.types";
 import type { EmailOpportunity } from "@/lib/email/templates";
 import { renderDeadlineReminder, renderWeeklyDigest } from "@/lib/email/templates";
+import { getSiteUrl } from "@/lib/site";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type AlertKind = "weekly_digest" | "deadline_reminder";
@@ -13,18 +14,19 @@ type AlertEvent = { userId: string; kind: AlertKind; periodKey: string };
 type PreferenceRow = {
   user_id: string;
   weekly_digest_enabled: boolean;
+  saved_search_alerts_enabled: boolean;
   deadline_reminders_enabled: boolean;
   profiles: Pick<ProfileRecord, "timezone"> | null;
 };
 type TrackedRow = {
   opportunity_id: string;
   status: string;
-  opportunities: Pick<OpportunityRecord, "company" | "title" | "location" | "work_mode" | "eligibility_basis" | "eligible_class_years" | "eligibility_notes" | "deadline_date" | "deadline_at" | "source_url"> | null;
+  opportunities: Pick<OpportunityRecord, "slug" | "company" | "title" | "location" | "work_mode" | "eligibility_basis" | "eligible_class_years" | "eligibility_notes" | "deadline_date" | "deadline_at" | "source_url"> | null;
 };
 
 const PAGE_SIZE = 100;
 const MAX_PAGES_PER_SCHEDULE = 100;
-const MAX_LISTINGS_PER_USER = 250;
+const MAX_LISTINGS_PER_USER = 5000;
 const MAX_TRACKED_PER_USER = 1000;
 const MAX_EMAIL_MATCHES = 8;
 
@@ -41,6 +43,7 @@ function getResend(): Resend {
 function mapOpportunity(row: OpportunityRecord): Opportunity {
   return {
     id: row.id,
+    slug: row.slug,
     canonicalSourceId: row.canonical_source_id,
     company: row.company,
     title: row.title,
@@ -79,6 +82,7 @@ function mapTrackedOpportunity(row: NonNullable<TrackedRow["opportunities"]>, ti
     location: row.location,
     workMode: row.work_mode,
     deadline,
+    detailUrl: new URL(`/internships/${row.slug}`, getSiteUrl()).toString(),
     sourceUrl: row.source_url,
     eligibility,
   };
@@ -166,9 +170,12 @@ async function getUserAlertContext(userId: string) {
   const [{ data: authResult, error: authError }, { data: profileData, error: profileError }, { data: settingData, error: settingError }] = await Promise.all([
     admin.auth.admin.getUserById(userId),
     admin.from("profiles").select("*").eq("id", userId).maybeSingle(),
-    admin.from("notification_settings").select("weekly_digest_enabled,deadline_reminders_enabled").eq("user_id", userId).maybeSingle(),
+    admin.from("notification_settings").select("weekly_digest_enabled,saved_search_alerts_enabled,deadline_reminders_enabled").eq("user_id", userId).maybeSingle(),
   ]);
-  if (authError || profileError || settingError || !authResult.user?.email || !profileData || !settingData) return null;
+  if (authError) throw authError;
+  if (profileError) throw profileError;
+  if (settingError) throw settingError;
+  if (!authResult.user?.email || !profileData || !settingData) return null;
   const profile = profileData as ProfileRecord;
   if (!profile.current_class_year || !profile.major || !profile.graduation_year || !profile.onboarding_completed_at) return null;
   const preferences: Preferences = {
@@ -185,13 +192,15 @@ async function getUserAlertContext(userId: string) {
     email: authResult.user.email,
     profile,
     preferences,
-    settings: settingData as { weekly_digest_enabled: boolean; deadline_reminders_enabled: boolean },
+    settings: settingData as { weekly_digest_enabled: boolean; saved_search_alerts_enabled: boolean; deadline_reminders_enabled: boolean },
   };
 }
 
 function unsubscribeUrl(userId: string): string {
   const token = createUnsubscribeToken(userId);
-  return `${process.env.NEXT_PUBLIC_APP_URL}/unsubscribe?token=${encodeURIComponent(token)}`;
+  const url = new URL("/unsubscribe", getSiteUrl());
+  url.searchParams.set("token", token);
+  return url.toString();
 }
 
 function isPreferenceMatch(opportunity: Opportunity, preferences: Preferences): boolean {
@@ -202,7 +211,7 @@ function isPreferenceMatch(opportunity: Opportunity, preferences: Preferences): 
 
 async function sendWeeklyDigest(event: AlertEvent) {
   const context = await getUserAlertContext(event.userId);
-  if (!context?.settings.weekly_digest_enabled) return { sent: false, reason: "not_opted_in" };
+  if (!context || (!context.settings.weekly_digest_enabled && !context.settings.saved_search_alerts_enabled)) return { sent: false, reason: "not_opted_in" };
   const local = getLocalAlertTime(new Date(), context.profile.timezone);
   if (localWeekKey(local.date) !== event.periodKey) return { sent: false, reason: "stale_period" };
 
@@ -214,22 +223,65 @@ async function sendWeeklyDigest(event: AlertEvent) {
   if ((trackedData?.length ?? 0) >= MAX_TRACKED_PER_USER) return { sent: false, reason: "tracking_exclusion_limit" };
   const tracked = new Set(((trackedData ?? []) as Array<{ opportunity_id: string }>).map(({ opportunity_id }) => opportunity_id));
   const today = new Date().toISOString().slice(0, 10);
-  const { data: listingsData, error: listingsError } = await context.admin.from("opportunities")
-    .select("*")
+  const { data: firstListings, error: listingsError, count: listingCount } = await context.admin.from("opportunities")
+    .select("*", { count: "exact" })
     .eq("status", "published")
     .eq("is_demo", false)
     .or(`deadline_date.is.null,deadline_date.gte.${today}`)
     .order("last_verified_at", { ascending: false })
-    .limit(MAX_LISTINGS_PER_USER);
+    .or(`deadline_at.is.null,deadline_at.gte.${new Date().toISOString()}`)
+    .range(0, PAGE_SIZE - 1);
   if (listingsError) throw listingsError;
+  if ((listingCount ?? 0) > MAX_LISTINGS_PER_USER) {
+    throw new Error(`Weekly alert matching is bounded to ${MAX_LISTINGS_PER_USER} current listings per recipient.`);
+  }
+  const listingsData = [...(firstListings ?? [])];
+  for (let offset = PAGE_SIZE; offset < (listingCount ?? listingsData.length); offset += PAGE_SIZE) {
+    const { data: page, error: pageError } = await context.admin.from("opportunities")
+      .select("*")
+      .eq("status", "published")
+      .eq("is_demo", false)
+      .or(`deadline_date.is.null,deadline_date.gte.${today}`)
+      .order("last_verified_at", { ascending: false })
+      .or(`deadline_at.is.null,deadline_at.gte.${new Date().toISOString()}`)
+      .range(offset, Math.min(offset + PAGE_SIZE - 1, (listingCount ?? 0) - 1));
+    if (pageError) throw pageError;
+    listingsData.push(...(page ?? []));
+  }
 
-  const matches = ((listingsData ?? []) as unknown as OpportunityRecord[])
+  const opportunities = (listingsData as unknown as OpportunityRecord[])
     .map(mapOpportunity)
-    .filter((opportunity) =>
-      !tracked.has(opportunity.id) &&
-      (!opportunity.deadlineAt || new Date(opportunity.deadlineAt).getTime() >= Date.now()) &&
-      isPreferenceMatch(opportunity, context.preferences),
-    )
+    .filter((opportunity) => !tracked.has(opportunity.id) && (!opportunity.deadlineAt || new Date(opportunity.deadlineAt).getTime() >= Date.now()));
+  const matchesById = new Map<string, Opportunity>();
+
+  if (context.settings.weekly_digest_enabled) {
+    for (const opportunity of opportunities.filter((item) => isPreferenceMatch(item, context.preferences))) {
+      matchesById.set(opportunity.id, opportunity);
+    }
+  }
+
+  if (context.settings.saved_search_alerts_enabled) {
+    const { data: searchRows, error: searchError, count: searchCount } = await context.admin.from("saved_searches")
+      .select("id,name,filters,notify_email,created_at,user_id", { count: "exact" })
+      .eq("user_id", event.userId).eq("notify_email", true).order("created_at", { ascending: false }).limit(50);
+    if (searchError) throw searchError;
+    if ((searchCount ?? 0) > 50) return { sent: false, reason: "saved_search_limit" };
+
+    for (const search of (searchRows ?? []) as unknown as SavedSearchRecord[]) {
+      const filters = savedSearchFiltersSchema.safeParse(search.filters);
+      if (!filters.success) throw new Error(`Saved search ${search.id} contains invalid filters.`);
+      for (const opportunity of opportunities.filter((item) => matchesSavedSearch(item, filters.data))) {
+        matchesById.set(opportunity.id, opportunity);
+      }
+    }
+  }
+
+  const matches = [...matchesById.values()]
+    .sort((left, right) => {
+      const leftDeadline = left.deadlineAt ?? left.deadlineDate ?? "9999-12-31";
+      const rightDeadline = right.deadlineAt ?? right.deadlineDate ?? "9999-12-31";
+      return leftDeadline.localeCompare(rightDeadline) || right.lastVerifiedAt.localeCompare(left.lastVerifiedAt);
+    })
     .slice(0, MAX_EMAIL_MATCHES);
   if (!matches.length) return { sent: false, reason: "no_matches" };
 
@@ -238,6 +290,7 @@ async function sendWeeklyDigest(event: AlertEvent) {
     title: opportunity.title,
     location: opportunity.location,
     work_mode: opportunity.workMode,
+    slug: opportunity.slug,
     eligibility_basis: opportunity.eligibilityBasis,
     eligible_class_years: opportunity.eligibleClassYears,
     eligibility_notes: opportunity.eligibilityNotes,
@@ -265,7 +318,7 @@ async function sendDeadlineReminders(event: AlertEvent) {
   if (local.date !== event.periodKey) return { sent: false, reason: "stale_period" };
 
   const { data, error } = await context.admin.from("tracked_applications")
-    .select("opportunity_id,status,opportunities!inner(company,title,location,work_mode,eligibility_basis,eligible_class_years,eligibility_notes,deadline_date,deadline_at,source_url)")
+    .select("opportunity_id,status,opportunities!inner(slug,company,title,location,work_mode,eligibility_basis,eligible_class_years,eligibility_notes,deadline_date,deadline_at,source_url)")
     .eq("user_id", event.userId)
     .limit(MAX_TRACKED_PER_USER);
   if (error) throw error;
@@ -320,8 +373,8 @@ export const scheduleAlertDispatch = inngest.createFunction(
       const from = page * PAGE_SIZE;
       const { settings, timezones } = await step.run(`load-alert-settings-${page}`, async () => {
         const { data, error } = await admin.from("notification_settings")
-          .select("user_id,weekly_digest_enabled,deadline_reminders_enabled")
-          .or("weekly_digest_enabled.eq.true,deadline_reminders_enabled.eq.true")
+          .select("user_id,weekly_digest_enabled,saved_search_alerts_enabled,deadline_reminders_enabled")
+          .or("weekly_digest_enabled.eq.true,saved_search_alerts_enabled.eq.true,deadline_reminders_enabled.eq.true")
           .order("user_id")
           .range(from, from + PAGE_SIZE - 1);
         if (error) throw error;
@@ -343,7 +396,7 @@ export const scheduleAlertDispatch = inngest.createFunction(
         if (!timezone) continue;
         try {
           const local = getLocalAlertTime(now, timezone);
-          if (setting.weekly_digest_enabled && isDigestHour(now, timezone)) {
+          if ((setting.weekly_digest_enabled || setting.saved_search_alerts_enabled) && isDigestHour(now, timezone)) {
             events.push({ name: "internradar/alerts.dispatch", data: { userId: setting.user_id, kind: "weekly_digest", periodKey: localWeekKey(local.date) } });
           }
           if (setting.deadline_reminders_enabled && isReminderHour(now, timezone)) {

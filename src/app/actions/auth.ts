@@ -129,6 +129,7 @@ export async function saveNotificationSettingsAction(formData: FormData): Promis
   const { error } = await supabase.from("notification_settings").update({
     weekly_digest_enabled: formData.get("weeklyDigest") === "on",
     deadline_reminders_enabled: formData.get("deadlineReminders") === "on",
+    saved_search_alerts_enabled: formData.get("savedSearchAlerts") === "on",
   }).eq("user_id", user.id);
   if (error) redirect("/settings?error=save");
   redirect("/settings?message=saved");

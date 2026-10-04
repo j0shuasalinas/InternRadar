@@ -4,6 +4,7 @@ export type EmailOpportunity = {
   location: string;
   workMode: string;
   deadline: string;
+  detailUrl: string;
   sourceUrl: string;
   eligibility: string;
 };
@@ -32,11 +33,11 @@ function stripHtml(html: string): string {
 }
 
 export function renderWeeklyDigest(opportunities: EmailOpportunity[], unsubscribeUrl: string): { html: string; text: string } {
-  const rows = opportunities.map((opportunity) => `<li style="margin:0 0 16px;padding:0 0 14px;border-bottom:1px solid #edf0ef"><strong>${escapeHtml(opportunity.title)}</strong><br><span style="color:#65747d">${escapeHtml(opportunity.company)} · ${escapeHtml(opportunity.location)} · ${escapeHtml(opportunity.workMode)}</span><br><span style="color:#697782">${escapeHtml(opportunity.eligibility)} · Deadline: ${escapeHtml(opportunity.deadline)}</span><br><a href="${escapeHtml(opportunity.sourceUrl)}" style="color:#315fc7">Check the original listing</a></li>`).join("");
+  const rows = opportunities.map((opportunity) => `<li style="margin:0 0 16px;padding:0 0 14px;border-bottom:1px solid #edf0ef"><strong>${escapeHtml(opportunity.title)}</strong><br><span style="color:#65747d">${escapeHtml(opportunity.company)} · ${escapeHtml(opportunity.location)} · ${escapeHtml(opportunity.workMode)}</span><br><span style="color:#697782">${escapeHtml(opportunity.eligibility)} · Deadline: ${escapeHtml(opportunity.deadline)}</span><br><a href="${escapeHtml(opportunity.detailUrl)}" style="color:#315fc7">View details on InternRadar</a> · <a href="${escapeHtml(opportunity.sourceUrl)}" style="color:#315fc7">Original listing</a></li>`).join("");
   return page("A few new roles for your radar", `<p style="color:#52626d">These curated opportunities match your saved preferences and are not already in your tracker.</p><ul style="padding-left:20px">${rows}</ul>`, unsubscribeUrl);
 }
 
 export function renderDeadlineReminder(opportunity: EmailOpportunity, unsubscribeUrl: string): { html: string; text: string } {
-  const content = `<p style="color:#52626d">A role in your tracker has an upcoming deadline.</p><p><strong>${escapeHtml(opportunity.title)}</strong><br>${escapeHtml(opportunity.company)} · ${escapeHtml(opportunity.location)}</p><p>Deadline: <strong>${escapeHtml(opportunity.deadline)}</strong></p><p>Eligibility: ${escapeHtml(opportunity.eligibility)}</p><p><a href="${escapeHtml(opportunity.sourceUrl)}" style="color:#315fc7">Confirm the deadline on the original listing</a></p>`;
+  const content = `<p style="color:#52626d">A role in your tracker has an upcoming deadline.</p><p><strong>${escapeHtml(opportunity.title)}</strong><br>${escapeHtml(opportunity.company)} · ${escapeHtml(opportunity.location)}</p><p>Deadline: <strong>${escapeHtml(opportunity.deadline)}</strong></p><p>Eligibility: ${escapeHtml(opportunity.eligibility)}</p><p><a href="${escapeHtml(opportunity.detailUrl)}" style="color:#315fc7">View opportunity details</a> · <a href="${escapeHtml(opportunity.sourceUrl)}" style="color:#315fc7">Confirm the deadline on the original listing</a></p>`;
   return page("A deadline is coming up", content, unsubscribeUrl);
 }

@@ -67,6 +67,20 @@ export default function Home() {
         <span><CalendarClock size={15} /> Reminders on your schedule</span>
       </section>
 
+      <section className="browse-discovery" aria-labelledby="browse-heading">
+        <div className="browse-discovery-heading">
+          <span className="section-label">EXPLORE THE DIRECTORY</span>
+          <h2 id="browse-heading">Start with what fits.</h2>
+          <p>Browse focused collections of current listings. Eligibility is based on what each source says, not a guess.</p>
+        </div>
+        <div className="browse-discovery-links">
+          <Link href="/internships/browse/freshman-internships">Internships for freshmen <ArrowRight size={15} /></Link>
+          <Link href="/internships/browse/paid-sophomore-internships">Paid sophomore internships <ArrowRight size={15} /></Link>
+          <Link href="/internships/browse/remote-undergraduate-research-internships">Remote undergraduate research internships <ArrowRight size={15} /></Link>
+          <Link href="/internships/browse/computer-science-sophomore-internships">Computer science internships for sophomores <ArrowRight size={15} /></Link>
+        </div>
+      </section>
+
       <section className="how-section" id="how-it-works">
         <div className="section-intro">
           <span className="section-label">A BETTER FIRST STEP</span>

@@ -6,6 +6,27 @@ import { opportunityInputSchema } from "@/lib/domain";
 import { requireAdmin } from "@/lib/auth";
 
 const opportunityIdSchema = z.union([z.literal(""), z.uuid()]);
+const reportReviewSchema = z.object({
+  reportId: z.uuid(),
+  status: z.enum(["open", "reviewed", "resolved"]),
+});
+
+export async function updateOpportunityReportAction(formData: FormData): Promise<void> {
+  const parsed = reportReviewSchema.safeParse({
+    reportId: formData.get("reportId"),
+    status: formData.get("status"),
+  });
+  if (!parsed.success) redirect("/admin?error=report");
+
+  const { user, supabase } = await requireAdmin();
+  const { data, error } = await supabase.from("opportunity_reports").update({
+    status: parsed.data.status,
+    reviewed_at: parsed.data.status === "open" ? null : new Date().toISOString(),
+    reviewed_by: parsed.data.status === "open" ? null : user.id,
+  }).eq("id", parsed.data.reportId).select("id").maybeSingle();
+  if (error || !data) redirect("/admin?error=report");
+  redirect("/admin?message=report");
+}
 
 export async function saveOpportunityAdminAction(formData: FormData): Promise<void> {
   const id = opportunityIdSchema.safeParse(formData.get("opportunityId") ?? "");

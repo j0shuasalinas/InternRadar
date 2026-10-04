@@ -12,6 +12,7 @@ export type ProfileRecord = {
 
 export type OpportunityRecord = {
   id: string;
+  slug: string;
   canonical_source_id: string | null;
   company: string;
   title: string;
@@ -55,4 +56,24 @@ export type ApplicationStatusHistoryRecord = {
   previous_status: TrackedApplicationRecord["status"] | null;
   new_status: TrackedApplicationRecord["status"];
   changed_at: string;
+};
+
+export type SavedSearchRecord = {
+  id: string;
+  user_id: string;
+  name: string;
+  filters: Record<string, string>;
+  notify_email: boolean;
+  created_at: string;
+};
+
+export type OpportunityReportRecord = {
+  id: string;
+  opportunity_id: string;
+  user_id: string;
+  reason: "closed" | "inaccurate" | "suspicious" | "other";
+  details: string;
+  status: "open" | "reviewed" | "resolved";
+  created_at: string;
+  reviewed_at: string | null;
 };

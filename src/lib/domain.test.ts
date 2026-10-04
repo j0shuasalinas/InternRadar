@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateMatchFit, dateKeyInTimeZone, evaluateEligibility, filterOpportunities, getListingFreshness, getMatchReasons, isSafeExternalUrl, opportunityInputSchema, preferencesSchema, rankOpportunitiesByFit, type Opportunity, type Preferences } from "@/lib/domain";
+import { calculateMatchFit, dateKeyInTimeZone, evaluateEligibility, filterOpportunities, getListingFreshness, getMatchReasons, isSafeExternalUrl, matchesSavedSearch, opportunityInputSchema, preferencesSchema, rankOpportunitiesByFit, type Opportunity, type Preferences } from "@/lib/domain";
 
 const profile: Preferences = {
   graduationYear: 2028,
@@ -14,6 +14,7 @@ const profile: Preferences = {
 function listing(overrides: Partial<Opportunity> = {}): Opportunity {
   return {
     id: "opportunity-1",
+    slug: "northstar-software-intern",
     company: "Northstar Labs",
     title: "Software Engineering Intern",
     description: "Build TypeScript and SQL data tools for students.",
@@ -142,6 +143,29 @@ describe("opportunity discovery filters", () => {
     expect(results.total).toBe(2);
     expect(results.items[0]?.id).toBe("2");
     expect(results.pageCount).toBe(2);
+  });
+});
+
+describe("saved search matching", () => {
+  it("matches title and company filters while respecting clear year exclusions", () => {
+    expect(matchesSavedSearch(listing(), { query: "software", classYear: "sophomore" })).toBe(true);
+    expect(matchesSavedSearch(listing(), { query: "sql" })).toBe(false);
+    expect(matchesSavedSearch(listing({ eligibleClassYears: ["junior", "senior"] }), { classYear: "sophomore" })).toBe(false);
+    expect(matchesSavedSearch(listing({ eligibilityBasis: "unclear", eligibleClassYears: [] }), { classYear: "sophomore" })).toBe(true);
+  });
+
+  it("matches location, work mode, compensation, and date-only or precise deadlines", () => {
+    expect(matchesSavedSearch(listing(), {
+      location: "Boston",
+      workMode: "hybrid",
+      compensation: "paid",
+      deadlineBefore: "2027-02-01",
+    })).toBe(true);
+    expect(matchesSavedSearch(listing({ deadlineDate: null, deadlineAt: "2027-01-31T17:00:00-05:00" }), {
+      deadlineBefore: "2027-01-31",
+    })).toBe(true);
+    expect(matchesSavedSearch(listing(), { deadlineBefore: "2027-01-31" })).toBe(false);
+    expect(matchesSavedSearch(listing(), { workMode: "remote" })).toBe(false);
   });
 });
 

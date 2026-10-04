@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Bookmark, BriefcaseBusiness, Building2, CalendarDays, Check, CircleHelp, Compass, ExternalLink, Filter, MapPin, Search, Sparkles } from "lucide-react";
 import { z } from "zod";
+import { saveSearchAction } from "@/app/actions/public";
 import { saveOpportunityAction } from "@/app/actions/workspace";
 import { requireAuthenticatedUser } from "@/lib/auth";
 import { calculateMatchFit, classYears, getListingFreshness, getMatchReasons, rankOpportunitiesByFit, type ClassYear, type Opportunity, type Preferences } from "@/lib/domain";
@@ -29,6 +30,7 @@ function firstValue(value: string | string[] | undefined): string | undefined {
 function dbOpportunity(row: OpportunityRecord): Opportunity {
   return {
     id: row.id,
+    slug: row.slug,
     canonicalSourceId: row.canonical_source_id,
     company: row.company,
     title: row.title,
@@ -145,7 +147,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
 
   return <>
     <PageHeading eyebrow="FIND YOUR FIT" title="Discover opportunities" description="Listings are curated and linked to their original source. Check the source before you apply." />
-    {firstValue(raw.error) && <p className="form-message form-error" role="alert">We couldn’t save that role. Refresh the list and try again.</p>}
+    {firstValue(raw.error) && <p className="form-message form-error" role="alert">{firstValue(raw.error) === "search" ? "We couldn’t save that search. Check its name and filters." : "We couldn’t save that role. Refresh the list and try again."}</p>}
     <form className="filter-bar production-filters" action="/discover" method="get">
       <label className="search-field"><Search size={16} /><span className="sr-only">Search title or company</span><input name="q" defaultValue={filters.q} placeholder="Search title or company" /></label>
       <label className="select-field"><span className="sr-only">Eligible class year</span><select name="classYear" defaultValue={selectedYear}><option value="freshman">Freshman</option><option value="sophomore">Sophomore</option><option value="junior">Junior</option><option value="senior">Senior</option><option value="graduate">Graduate student</option></select></label>
@@ -155,6 +157,18 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
       <label className="date-filter"><CalendarDays size={15} /><span className="sr-only">Deadline before</span><input name="deadlineBefore" type="date" defaultValue={filters.deadlineBefore} /></label>
       <label className="select-field"><span className="sr-only">Sort opportunities</span><select name="sortBy" defaultValue={filters.sortBy}><option value="fit">Best fit</option><option value="deadline">Soonest deadline</option></select></label>
       <button type="submit" className="button button-dark"><Filter size={14} /> Filter</button>
+    </form>
+    <form action={saveSearchAction} className="save-search-form">
+      <span>Keep these filters handy</span>
+      <input type="hidden" name="query" value={filters.q ?? ""} />
+      <input type="hidden" name="classYear" value={filters.classYear ?? profile.currentClassYear} />
+      <input type="hidden" name="location" value={filters.location ?? ""} />
+      <input type="hidden" name="workMode" value={filters.workMode ?? ""} />
+      <input type="hidden" name="compensation" value={filters.compensation ?? ""} />
+      <input type="hidden" name="deadlineBefore" value={filters.deadlineBefore ?? ""} />
+      <label><span className="sr-only">Saved search name</span><input name="name" required maxLength={80} defaultValue={[filters.q, filters.location, filters.workMode].filter(Boolean).join(" · ") || "My internship search"} /></label>
+      <button className="button button-quiet" type="submit">Save search</button>
+      <Link href="/settings">Manage saved searches</Link>
     </form>
     <div className="results-line"><span>{ranked.length} published roles for a {selectedYear}</span><span>Open listings only · ranked by transparent fit score</span></div>
     <details className="score-method"><summary>How fit scores work</summary><p>Scores use source-stated eligibility (40 confirmed, 24 undergraduate-only, 10 unclear), major match (20), each of up to five matching skills (5 each), preferred location (10), and preferred work mode (5). A score explains profile overlap; it does not guarantee selection or eligibility beyond the source.</p></details>
@@ -170,7 +184,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
         : freshness.daysSinceVerified === 0 ? "today" : `${freshness.daysSinceVerified} days ago`;
       const reasons = getMatchReasons(opportunity, rankingProfile).slice(0, 3);
       return <article className="opportunity-card" key={record.id}>
-        <div className="opportunity-main"><span className="company-stamp company-stamp-large">{record.company.slice(0, 1)}</span><div className="opportunity-title-block"><span className="company-name"><Building2 size={13} /> {record.company}</span><h2>{record.title}</h2><div className="opportunity-meta"><span><MapPin size={13} />{record.location}</span><span><BriefcaseBusiness size={13} />{record.work_mode}</span><span>{record.compensation_type === "unknown" ? "Compensation not listed" : record.compensation_details ?? record.compensation_type}</span></div></div><div className="opportunity-actions"><span className={`match-score match-score-${fit.tier}`} aria-label={`${fit.tier} match, ${fit.score} out of 100`}><strong>{fit.score}</strong><span>{fit.tier} fit</span></span><span className={`eligibility-badge ${badge[1]}`}>{eligibility === "confirmed" ? <Check size={12} /> : eligibility === "potential" ? <Sparkles size={12} /> : <CircleHelp size={12} />}{badge[0]}</span>{savedIds.has(record.id) ? <span className="save-button is-saved"><Check size={14} /> Saved</span> : <form action={saveOpportunityAction}><input type="hidden" name="opportunityId" value={record.id} /><button className="save-button" type="submit"><Bookmark size={14} /> Save role</button></form>}</div></div>
+        <div className="opportunity-main"><span className="company-stamp company-stamp-large">{record.company.slice(0, 1)}</span><div className="opportunity-title-block"><span className="company-name"><Building2 size={13} /> {record.company}</span><h2><Link href={`/internships/${record.slug}`}>{record.title}</Link></h2><div className="opportunity-meta"><span><MapPin size={13} />{record.location}</span><span><BriefcaseBusiness size={13} />{record.work_mode}</span><span>{record.compensation_type === "unknown" ? "Compensation not listed" : record.compensation_details ?? record.compensation_type}</span></div></div><div className="opportunity-actions"><span className={`match-score match-score-${fit.tier}`} aria-label={`${fit.tier} match, ${fit.score} out of 100`}><strong>{fit.score}</strong><span>{fit.tier} fit</span></span><span className={`eligibility-badge ${badge[1]}`}>{eligibility === "confirmed" ? <Check size={12} /> : eligibility === "potential" ? <Sparkles size={12} /> : <CircleHelp size={12} />}{badge[0]}</span>{savedIds.has(record.id) ? <span className="save-button is-saved"><Check size={14} /> Saved</span> : <form action={saveOpportunityAction}><input type="hidden" name="opportunityId" value={record.id} /><button className="save-button" type="submit"><Bookmark size={14} /> Save role</button></form>}</div></div>
         <div className="opportunity-bottom"><div className="match-reasons"><span className="section-label">WHY IT MATCHES</span><div>{reasons.map((reason) => <span key={reason}><Check size={12} />{reason}</span>)}</div>{record.eligibility_notes && <p className="eligibility-notes">Source note: {record.eligibility_notes}</p>}</div><div className="listing-detail"><span>Deadline <strong>{record.deadline_at ? new Date(record.deadline_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: profile.timezone }) : record.deadline_date ?? "Not listed"}</strong></span><span>Verified <strong>{new Date(record.last_verified_at).toLocaleDateString(undefined, { dateStyle: "medium", timeZone: profile.timezone })}</strong></span><span className={`listing-freshness freshness-${freshness.state}`}>{freshness.state === "stale" ? "May be outdated" : freshness.state === "due" ? "Re-check recommended" : "Recently verified"} · {verifiedAgo}</span><a href={record.source_url} target="_blank" rel="noopener noreferrer">Original source <ExternalLink size={12} /></a></div></div>
       </article>;
     })}</div> : <EmptyResults hasFilters={Boolean(filters.q || filters.location || filters.workMode || filters.compensation || filters.deadlineBefore)} />}

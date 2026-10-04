@@ -1,5 +1,6 @@
 import { CircleHelp, ShieldCheck } from "lucide-react";
-import { saveOpportunityAdminAction } from "@/app/actions/admin";
+import Link from "next/link";
+import { saveOpportunityAdminAction, updateOpportunityReportAction } from "@/app/actions/admin";
 import { requireAdmin } from "@/lib/auth";
 import { classYears, getListingFreshness } from "@/lib/domain";
 import type { OpportunityRecord } from "@/lib/database.types";
@@ -14,22 +15,51 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const { supabase } = await requireAdmin();
   const params = await searchParams;
   const staleBefore = new Date(new Date().getTime() - 15 * 86_400_000).toISOString();
-  const [listingsResult, freshnessResult] = await Promise.all([
+  const requestedReportPage = Math.max(1, Math.trunc(Number(first(params.reportPage)) || 1));
+  const reportPageSize = 50;
+  const [listingsResult, freshnessResult, reportsResult] = await Promise.all([
     supabase.from("opportunities").select("*").order("updated_at", { ascending: false }).limit(100),
     supabase.from("opportunities").select("id", { count: "exact", head: true })
       .eq("status", "published").eq("is_demo", false).lte("last_verified_at", staleBefore),
+    supabase.from("opportunity_reports")
+      .select("id,opportunity_id,reason,details,status,created_at,opportunities!inner(title,company,slug)", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range((requestedReportPage - 1) * reportPageSize, requestedReportPage * reportPageSize - 1),
   ]);
-  if (listingsResult.error || freshnessResult.error) return <div className="data-error" role="alert"><CircleHelp size={20} /><div><strong>Opportunity listings could not be loaded.</strong><p>Check the Supabase migration and database policies.</p></div></div>;
+  if (listingsResult.error || freshnessResult.error || reportsResult.error) return <div className="data-error" role="alert"><CircleHelp size={20} /><div><strong>Opportunity listings could not be loaded.</strong><p>Check the Supabase migration and database policies.</p></div></div>;
   const listings = (listingsResult.data ?? []) as unknown as OpportunityRecord[];
+  let reports = reportsResult.data ?? [];
+  const reportCount = reportsResult.count ?? reports.length;
+  const reportPageCount = Math.max(1, Math.ceil(reportCount / reportPageSize));
+  const currentReportPage = Math.min(requestedReportPage, reportPageCount);
+  if (currentReportPage !== requestedReportPage) {
+    const { data, error } = await supabase.from("opportunity_reports")
+      .select("id,opportunity_id,reason,details,status,created_at,opportunities!inner(title,company,slug)")
+      .order("created_at", { ascending: false })
+      .range((currentReportPage - 1) * reportPageSize, currentReportPage * reportPageSize - 1);
+    if (error) return <div className="data-error" role="alert"><CircleHelp size={20} /><div><strong>Listing reports could not be loaded.</strong><p>Check the Supabase migration and database policies.</p></div></div>;
+    reports = data ?? [];
+  }
   const message = first(params.message);
   const errorCode = first(params.error);
 
   return <>
     <div className="page-heading"><div><span className="section-label">ADMINISTRATION</span><h1>Opportunity management</h1><p>Create, verify, publish, edit, or close curated listings.</p></div><span className="admin-marker"><ShieldCheck size={15} /> Admin access</span></div>
-    {message && <p className="form-message form-success" role="status">Listing saved. The verification date changes only when the original source is confirmed.</p>}
-    {errorCode && <p className="form-message form-error" role="alert">{errorCode === "duplicate" ? "That canonical source identifier is already in use." : errorCode === "verification" ? "Confirm you re-checked the original source before saving a published listing." : "The listing could not be saved. Check all fields and try again."}</p>}
+    {message && <p className="form-message form-success" role="status">{message === "report" ? "Listing report review was updated." : "Listing saved. The verification date changes only when the original source is confirmed."}</p>}
+    {errorCode && <p className="form-message form-error" role="alert">{errorCode === "duplicate" ? "That canonical source identifier is already in use." : errorCode === "verification" ? "Confirm you re-checked the original source before saving a published listing." : errorCode === "report" ? "The listing report could not be updated." : "The listing could not be saved. Check all fields and try again."}</p>}
     <section className="admin-create-panel"><div className="admin-section-heading"><div><span className="section-label">NEW LISTING</span><h2>Add an opportunity</h2></div></div><OpportunityForm /></section>
     <p className={`freshness-summary${freshnessResult.count ? " has-stale" : ""}`} role="status">{freshnessResult.count ?? 0} published production listing{freshnessResult.count === 1 ? "" : "s"} need re-verification (last checked over 14 days ago).</p>
+    <section className="admin-listings"><div className="admin-section-heading"><div><span className="section-label">STUDENT FEEDBACK</span><h2>Listing reports <span>{reportCount} total</span></h2></div></div>
+      <p className="report-open-count">{reports.filter((report) => report.status === "open").length} open on this page</p>
+      {reports.length ? <div className="report-review-list">{reports.map((report) => {
+        const opportunity = report.opportunities as unknown as { title: string; company: string; slug: string };
+        return <article className="report-review-card" key={report.id}>
+          <div><span className={`status-pill status-${report.status}`}>{report.status}</span><h3><a href={`/internships/${opportunity.slug}`} target="_blank" rel="noopener noreferrer">{opportunity.title}</a></h3><p>{opportunity.company} · {report.reason} · {new Date(report.created_at).toLocaleDateString()}</p>{report.details && <blockquote>{report.details}</blockquote>}</div>
+          <form action={updateOpportunityReportAction}><input type="hidden" name="reportId" value={report.id} /><label>Review status<select name="status" defaultValue={report.status}><option value="open">Open</option><option value="reviewed">Reviewed</option><option value="resolved">Resolved</option></select></label><button className="button button-dark" type="submit">Save review</button></form>
+        </article>;
+      })}</div> : <p className="admin-empty">No listing reports yet.</p>}
+      {reportPageCount > 1 && <nav className="pagination" aria-label="Listing report pages">{currentReportPage > 1 && <Link href={`/admin?reportPage=${currentReportPage - 1}`}>Previous reports</Link>}<span>Page {currentReportPage} of {reportPageCount}</span>{currentReportPage < reportPageCount && <Link href={`/admin?reportPage=${currentReportPage + 1}`}>Next reports</Link>}</nav>}
+    </section>
     <section className="admin-listings"><div className="admin-section-heading"><div><span className="section-label">CURATED DATA</span><h2>Existing listings <span>{listings.length}</span></h2></div></div>
       {listings.length ? <div className="admin-list">{listings.map((listing) => {
         const freshness = getListingFreshness(listing.last_verified_at);
