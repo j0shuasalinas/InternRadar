@@ -354,6 +354,15 @@
   .listing-detail { min-width: 145px; display: grid; gap: 4px; color: #808b91; font-size: 9px; }
   .listing-detail strong { color: #51616a; font-weight: 650; }
   .listing-detail a, .tracker-footer a { display: inline-flex; align-items: center; gap: 4px; width: fit-content; color: var(--blue); font-weight: 680; }
+  .listing-freshness { font-size: 9px; font-weight: 680; }
+  .freshness-fresh { color: #34735a; }
+  .freshness-due { color: #8a671d; }
+  .freshness-stale { color: #a14c3f; }
+  .freshness-summary { margin: 0 0 12px; padding: 10px 12px; border: 1px solid #dfe7e2; border-radius: 5px; background: #f5f8f5; color: #526d5e; font-size: 10px; }
+  .freshness-summary.has-stale { border-color: #ead9d5; background: #fbf5f3; color: #985244; }
+  .freshness-pill { white-space: nowrap; font-size: 9px; font-weight: 700; }
+  .verification-confirmation { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; color: #536a5b; font-size: 10px; line-height: 1.5; }
+  .verification-confirmation input { flex: 0 0 auto; margin-top: 1px; accent-color: var(--green); }
   .fictional-label { padding: 7px 17px; border-top: 1px solid #f0f2f1; color: #9a7b3b; background: #fffaf0; font-size: 8px; font-weight: 760; letter-spacing: .65px; }
   .pagination { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 18px; color: #74828a; font-size: 10px; }
   .pagination button { min-height: 31px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 1px solid #dfe5e4; border-radius: 4px; background: #fff; color: #405662; font-size: 10px; cursor: pointer; }
@@ -383,12 +392,30 @@
   .notes-field textarea::placeholder { color: #9aa4a8; }
   .tracker-footer { display: flex; align-items: center; gap: 11px; margin-top: 10px; padding-top: 9px; border-top: 1px solid #edf0ef; color: #7e8a90; font-size: 9px; }
   .tracker-footer a { margin-left: auto; }
+  .status-history { margin-top: 12px; padding-top: 10px; border-top: 1px solid #edf0ef; }
+  .status-history > strong { color: #63737a; font-size: 9px; font-weight: 700; }
+  .status-history ol { display: flex; flex-wrap: wrap; gap: 7px; margin: 7px 0 0; padding: 0; list-style: none; }
+  .status-history li { display: inline-flex; align-items: center; gap: 6px; color: #7b878d; font-size: 9px; }
+  .history-current { color: #356c52; font-weight: 700; }
   .status-pill { width: fit-content; padding: 4px 7px; border-radius: 4px; background: #edf0f1; color: #586871; font-size: 9px; font-weight: 710; text-transform: capitalize; }
   .status-applied { background: #e7eef9; color: #315ca4; }
   .status-interview { background: #f9f0dc; color: #8a6218; }
   .status-offer { background: #e5f2e9; color: #28704c; }
   .status-rejected { background: #f7eae8; color: #985144; }
   .status-withdrawn { background: #edf0f0; color: #69767c; }
+  .follow-up-panel { margin-top: 15px; }
+  .follow-up-panel .panel-heading { padding-bottom: 11px; }
+  .follow-up-alert, .follow-up-clear, .follow-up-empty { margin: 10px 0; color: #748188; font-size: 10px; }
+  .follow-up-alert { color: #965648; font-weight: 680; }
+  .follow-up-list { display: grid; }
+  .follow-up-item { min-height: 54px; display: grid; grid-template-columns: 105px minmax(0, 1fr) 55px 14px; align-items: center; gap: 10px; border-top: 1px solid #edf0ef; color: #65747b; text-decoration: none; }
+  .follow-up-item:hover .follow-up-copy strong { color: var(--blue); }
+  .follow-up-date { color: #52636d; font-size: 10px; font-weight: 660; }
+  .follow-up-copy { min-width: 0; display: grid; gap: 3px; }
+  .follow-up-copy strong { overflow: hidden; color: var(--ink); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+  .follow-up-copy small { color: #7f8a90; font-size: 9px; }
+  .follow-up-state { color: #59745f; font-size: 9px; font-weight: 700; }
+  .follow-up-item.is-overdue .follow-up-state { color: #a34f40; }
 
   .settings-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(290px, .8fr); gap: 15px; align-items: start; }
   .settings-panel { padding: 20px; border: 1px solid #e0e5e4; border-radius: 6px; background: #fff; }

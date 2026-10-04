@@ -11,11 +11,15 @@ InternRadar is a deployable Next.js SaaS starter for college freshmen and sophom
 - Public landing page and a credential-free interactive local demo.
 - Email/password sign-up and sign-in, email confirmation callback, sign-out, password reset, protected pages, and student onboarding.
 - Supabase-backed opportunity discovery with title/company search, class-year, location, work-mode, compensation, and deadline filters.
-- Saved roles, application statuses, notes, application and follow-up dates, and an actual-data dashboard.
+- Transparent profile-fit scores and reasons, with global fit/deadline sorting before paginated results.
+- Saved roles, application statuses and history, notes, application and follow-up dates, timezone-aware overdue actions, and exact dashboard counts.
+- Listing freshness labels for students, stale-listing review counts for admins, and explicit source re-check confirmation before publishing.
 - Opt-in weekly digests and deadline reminders through Inngest and Resend.
 - Admin-only opportunity create/edit/publish/close tools.
 
 Eligibility labels are evidence-based. `Confirmed eligible` requires the source to name the student's class year. `Potentially relevant` is used when the source explicitly says undergraduate students but does not name years. `Eligibility unclear` means the source does not state class-year eligibility. A role that explicitly excludes the student's year is not shown for that year. Preference reasons use only the saved major, skills, location, and work-mode fields.
+
+Fit scores are deterministic and are explanations of profile overlap, not hiring predictions: source-stated eligibility contributes 40 points when confirmed, 24 when the source says undergraduate students without naming class years, or 10 when eligibility is unclear; matching major text contributes 20; each of up to five matching skills contributes 5; preferred location contributes 10; and matching work mode contributes 5. Score reasons and eligibility evidence are shown separately, so a high profile score never changes the source's eligibility wording.
 
 ## Local Development
 
@@ -74,7 +78,7 @@ on conflict (user_id) do nothing;
 
 The insert must return one row. If it returns none, confirm the account exists and the email is correct. Keep admin assignment in the owner-controlled SQL workflow; it is intentionally not exposed in the app.
 
-Admins should use the original public HTTPS source URL, enter only class years explicitly named by the source, and record a note for broad or unclear eligibility. Use the date-only deadline field when the source gives a date; use the precise timestamp field only when the source gives a time and offset. Saving a listing records its verification time. Close a listing when it is no longer open.
+Admins should use the original public HTTPS source URL, enter only class years explicitly named by the source, and record a note for broad or unclear eligibility. Use the date-only deadline field when the source gives a date; use the precise timestamp field only when the source gives a time and offset. Published listing saves require an explicit confirmation that the source was re-checked; editing or closing without that confirmation preserves the previous `last_verified_at`. Student-facing freshness is recent through 14 days, due for re-check from 15 to 30 days, and stale after 30 days. Stale listings remain visibly marked until an admin verifies them or closes them.
 
 ## Data And Security
 
@@ -100,7 +104,7 @@ npm run test:e2e
 npm run build
 ```
 
-Vitest covers eligibility, source URL checks, timezone scheduling, and unsubscribe-token integrity. Playwright covers class-year filtering, pagination, saving, application updates/persistence, mobile overflow, and the non-sending email preview.
+Vitest covers eligibility, transparent fit scoring and ranking, freshness thresholds, timezone-aware dates, source URL checks, alert scheduling, and unsubscribe-token integrity. Playwright covers class-year filtering, pagination, fit scores, source freshness, saving, application updates/history persistence, mobile overflow, and the non-sending email preview.
 
 ## Deploy
 

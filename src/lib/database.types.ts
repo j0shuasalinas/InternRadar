@@ -48,3 +48,11 @@ export type TrackedApplicationRecord = {
 export type TrackedApplicationWithOpportunity = TrackedApplicationRecord & {
   opportunities: Pick<OpportunityRecord, "company" | "title" | "location" | "deadline_date" | "deadline_at" | "source_url"> | null;
 };
+
+export type ApplicationStatusHistoryRecord = {
+  id: string;
+  tracked_application_id: string;
+  previous_status: TrackedApplicationRecord["status"] | null;
+  new_status: TrackedApplicationRecord["status"];
+  changed_at: string;
+};

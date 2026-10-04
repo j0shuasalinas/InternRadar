@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateMatchFit, evaluateEligibility, filterOpportunities, getMatchReasons, isSafeExternalUrl, opportunityInputSchema, preferencesSchema, rankOpportunitiesByFit, type Opportunity, type Preferences } from "@/lib/domain";
+import { calculateMatchFit, dateKeyInTimeZone, evaluateEligibility, filterOpportunities, getListingFreshness, getMatchReasons, isSafeExternalUrl, opportunityInputSchema, preferencesSchema, rankOpportunitiesByFit, type Opportunity, type Preferences } from "@/lib/domain";
 
 const profile: Preferences = {
   graduationYear: 2028,
@@ -142,6 +142,32 @@ describe("opportunity discovery filters", () => {
     expect(results.total).toBe(2);
     expect(results.items[0]?.id).toBe("2");
     expect(results.pageCount).toBe(2);
+  });
+});
+
+describe("timezone-aware application dates", () => {
+  it("uses the profile timezone instead of the server calendar date", () => {
+    const instant = new Date("2026-01-01T01:00:00.000Z");
+
+    expect(dateKeyInTimeZone(instant, "America/Los_Angeles")).toBe("2025-12-31");
+    expect(dateKeyInTimeZone(instant, "America/New_York")).toBe("2025-12-31");
+    expect(dateKeyInTimeZone(instant, "Asia/Tokyo")).toBe("2026-01-01");
+  });
+});
+
+describe("listing freshness", () => {
+  const now = new Date("2026-10-03T12:00:00.000Z");
+
+  it("marks verification recent for 14 days, due through 30 days, and stale thereafter", () => {
+    expect(getListingFreshness("2026-09-19T12:00:00.000Z", now)).toEqual({ state: "fresh", daysSinceVerified: 14 });
+    expect(getListingFreshness("2026-09-18T12:00:00.000Z", now)).toEqual({ state: "due", daysSinceVerified: 15 });
+    expect(getListingFreshness("2026-09-03T12:00:00.000Z", now)).toEqual({ state: "due", daysSinceVerified: 30 });
+    expect(getListingFreshness("2026-09-02T12:00:00.000Z", now)).toEqual({ state: "stale", daysSinceVerified: 31 });
+  });
+
+  it("does not treat future verification dates as stale and fails invalid timestamps closed", () => {
+    expect(getListingFreshness("2026-10-04T12:00:00.000Z", now)).toEqual({ state: "fresh", daysSinceVerified: 0 });
+    expect(getListingFreshness("not-a-timestamp", now)).toEqual({ state: "stale", daysSinceVerified: null });
   });
 });
 

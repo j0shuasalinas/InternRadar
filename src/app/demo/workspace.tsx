@@ -4,7 +4,7 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight, Bell, Bookmark, BriefcaseBusiness, Building2, CalendarDays, Check, ChevronDown, CircleHelp, Clock3, Compass, ExternalLink, Filter, LayoutDashboard, MapPin, Radar, Search, Settings2, Sparkles, X } from "lucide-react";
 import { z } from "zod";
-import { applicationStatuses, calculateMatchFit, evaluateEligibility, filterOpportunities, getMatchReasons, preferencesSchema, type ApplicationStatus, type ClassYear, type Opportunity, type Preferences } from "@/lib/domain";
+import { applicationStatuses, calculateMatchFit, evaluateEligibility, filterOpportunities, getListingFreshness, getMatchReasons, preferencesSchema, type ApplicationStatus, type ClassYear, type Opportunity, type Preferences } from "@/lib/domain";
 
 const trackedSchema = z.object({
   opportunityId: z.string(),
@@ -12,6 +12,10 @@ const trackedSchema = z.object({
   notes: z.string(),
   appliedAt: z.string().optional(),
   followUpDate: z.string().optional(),
+  history: z.array(z.object({
+    status: z.enum(applicationStatuses),
+    changedAt: z.iso.datetime(),
+  })).default([]),
 });
 const demoStateSchema = z.object({
   profile: preferencesSchema,
@@ -130,7 +134,15 @@ export default function DemoWorkspace({ opportunities }: { opportunities: Opport
   });
   function saveOpportunity(opportunityId: string): void {
     if (state.applications.some((entry) => entry.opportunityId === opportunityId)) return;
-    updateDemoState((current) => ({ ...current, applications: [...current.applications, { opportunityId, status: "saved", notes: "" }] }));
+    updateDemoState((current) => ({
+      ...current,
+      applications: [...current.applications, {
+        opportunityId,
+        status: "saved",
+        notes: "",
+        history: [{ status: "saved", changedAt: new Date().toISOString() }],
+      }],
+    }));
   }
 
   function updateApplication(opportunityId: string, patch: Partial<TrackedEntry>): void {
@@ -140,6 +152,9 @@ export default function DemoWorkspace({ opportunities }: { opportunities: Opport
         if (entry.opportunityId !== opportunityId) return entry;
         const updated = { ...entry, ...patch };
         if (patch.status === "applied" && !updated.appliedAt) updated.appliedAt = new Date().toISOString().slice(0, 10);
+        if (patch.status && patch.status !== entry.status) {
+          updated.history = [...entry.history, { status: patch.status, changedAt: new Date().toISOString() }];
+        }
         return updated;
       }),
     }));
@@ -293,13 +308,17 @@ function OpportunityCard({ opportunity, profile, isTracked, onSave }: { opportun
   const eligibility = eligibilityText(opportunity, profile);
   const reasons = getMatchReasons(opportunity, profile).slice(0, 3);
   const fit = calculateMatchFit(opportunity, profile);
+  const freshness = getListingFreshness(opportunity.lastVerifiedAt);
+  const verifiedAgo = freshness.daysSinceVerified === null
+    ? "invalid verification date"
+    : freshness.daysSinceVerified === 0 ? "today" : `${freshness.daysSinceVerified} days ago`;
   return <article className="opportunity-card">
     <div className="opportunity-main">
       <span className="company-stamp company-stamp-large">{opportunity.company.slice(0, 1)}</span>
       <div className="opportunity-title-block"><span className="company-name"><Building2 size={13} /> {opportunity.company}</span><h2>{opportunity.title}</h2><div className="opportunity-meta"><span><MapPin size={13} />{opportunity.location}</span><span><BriefcaseBusiness size={13} />{opportunity.workMode}</span><span><Clock3 size={13} />{opportunity.compensationType === "unknown" ? "Compensation not listed" : opportunity.compensationDetails ?? opportunity.compensationType}</span></div></div>
       <div className="opportunity-actions"><span className={`match-score match-score-${fit.tier}`} aria-label={`${fit.tier} match, ${fit.score} out of 100`}><strong>{fit.score}</strong><span>{fit.tier} fit</span></span><span className={`eligibility-badge ${eligibility.className}`}>{eligibility.className === "badge-confirmed" ? <Check size={12} /> : eligibility.className === "badge-potential" ? <Sparkles size={12} /> : <CircleHelp size={12} />}{eligibility.label}</span><button type="button" className={`save-button${isTracked ? " is-saved" : ""}`} onClick={onSave} disabled={isTracked} aria-label={isTracked ? `Saved ${opportunity.title}` : `Save ${opportunity.title}`}>{isTracked ? <Check size={15} /> : <Bookmark size={15} />}<span>{isTracked ? "Saved" : "Save role"}</span></button></div>
     </div>
-    <div className="opportunity-bottom"><div className="match-reasons"><span className="section-label">WHY IT MATCHES</span><div>{reasons.map((reason) => <span key={reason}><Check size={12} />{reason}</span>)}</div></div><div className="listing-detail"><span>Deadline <strong>{prettyDate(opportunity.deadlineDate)}</strong></span><span>Verified <strong>{prettyDate(opportunity.lastVerifiedAt.slice(0, 10))}</strong></span><a href={opportunity.sourceUrl} target="_blank" rel="noreferrer">Source details <ExternalLink size={12} /></a></div></div>
+    <div className="opportunity-bottom"><div className="match-reasons"><span className="section-label">WHY IT MATCHES</span><div>{reasons.map((reason) => <span key={reason}><Check size={12} />{reason}</span>)}</div></div><div className="listing-detail"><span>Deadline <strong>{prettyDate(opportunity.deadlineDate)}</strong></span><span>Verified <strong>{prettyDate(opportunity.lastVerifiedAt.slice(0, 10))}</strong></span><span className={`listing-freshness freshness-${freshness.state}`}>{freshness.state === "stale" ? "May be outdated" : freshness.state === "due" ? "Re-check recommended" : "Recently verified"} · {verifiedAgo}</span><a href={opportunity.sourceUrl} target="_blank" rel="noreferrer">Source details <ExternalLink size={12} /></a></div></div>
     <div className="fictional-label">FICTIONAL LOCAL SAMPLE · NOT AN OPEN INTERNSHIP</div>
   </article>;
 }
@@ -312,13 +331,18 @@ function ApplicationsView(props: {
   return <>
     <PageHeading eyebrow="KEEP THE MOMENTUM" title="Application tracker" description="A private place for your status, notes, and follow-up dates. Demo changes are saved only in this browser." action={<span className="tracked-total"><strong>{props.applications.length}</strong> tracked</span>} />
     <div className="tracker-toolbar"><label className="search-field"><Search size={16} /><span className="sr-only">Search tracked roles</span><input value={props.query} onChange={(event) => props.onQuery(event.target.value)} placeholder="Search tracked roles" /></label><label className="select-field"><span className="sr-only">Filter by status</span><select value={props.statusFilter} onChange={(event) => props.onStatusFilter(event.target.value)}><option value="">All statuses</option>{applicationStatuses.map((status) => <option key={status} value={status}>{status[0]?.toUpperCase()}{status.slice(1)}</option>)}</select><ChevronDown size={14} /></label></div>
-    {props.applications.length ? <div className="tracker-list">{props.applications.map(({ opportunity, status, notes, appliedAt, followUpDate }) => opportunity && <article className="tracker-card" key={opportunity.id}>
+    {props.applications.length ? <div className="tracker-list">{props.applications.map(({ opportunity, status, notes, appliedAt, followUpDate, history }) => opportunity && <article className="tracker-card" key={opportunity.id}>
       <div className="tracker-title"><span className="company-stamp">{opportunity.company.slice(0, 1)}</span><div><strong>{opportunity.title}</strong><small>{opportunity.company}</small></div><button type="button" className="icon-button remove-button" onClick={() => props.onRemove(opportunity.id)} aria-label={`Remove ${opportunity.title}`} title="Remove from tracker"><X size={16} /></button></div>
       <div className="tracker-fields"><label>Application status<select value={status} onChange={(event) => props.onUpdate(opportunity.id, { status: event.target.value as ApplicationStatus })}>{applicationStatuses.map((item) => <option key={item} value={item}>{item[0]?.toUpperCase()}{item.slice(1)}</option>)}</select></label><label>Application date<input type="date" value={appliedAt ?? ""} onChange={(event) => props.onUpdate(opportunity.id, { appliedAt: event.target.value })} /></label><label>Follow-up date<input type="date" value={followUpDate ?? ""} onChange={(event) => props.onUpdate(opportunity.id, { followUpDate: event.target.value })} /></label></div>
       <label className="notes-field">Private notes<textarea value={notes} onChange={(event) => props.onUpdate(opportunity.id, { notes: event.target.value })} placeholder="What did you send? Who should you follow up with?" rows={2} /></label>
       <div className="tracker-footer"><AppStatus status={status} /><span>Deadline: {prettyDate(opportunity.deadlineDate)}</span><a href={opportunity.sourceUrl} target="_blank" rel="noreferrer">View source <ExternalLink size={12} /></a></div>
+      {history.length > 0 && <StatusHistory entries={history} />}
     </article>)}</div> : <div className="empty-state"><span className="empty-icon"><Bookmark size={20} /></span><h2>{props.query || props.statusFilter ? "No tracked roles match." : "Your tracker is ready."}</h2><p>{props.query || props.statusFilter ? "Clear the search or status filter to see everything." : "Save a role from Discover and it will appear here."}</p></div>}
   </>;
+}
+
+function StatusHistory({ entries }: { entries: TrackedEntry["history"] }) {
+  return <div className="status-history" aria-label="Application status history"><strong>Status history</strong><ol>{entries.slice(-4).reverse().map(({ status, changedAt }, index) => <li key={`${status}-${changedAt}`}><span className={`status-pill status-${status}`}>{status}</span><time dateTime={changedAt}>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(changedAt))}</time>{index === 0 && <span className="history-current">Current</span>}</li>)}</ol></div>;
 }
 
 function SettingsView({ state, onSave, onToggle, message }: { state: DemoState; onSave: (data: FormData) => void; onToggle: (key: "weeklyDigest" | "deadlineReminders", value: boolean) => void; message: string }) {

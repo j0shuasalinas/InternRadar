@@ -8,6 +8,9 @@ test("freshman and sophomore opportunity discovery stays explicit", async ({ pag
   await expect(page.getByRole("heading", { name: "Discover opportunities" })).toBeVisible();
   await expect(page.getByText("Confirmed eligible").first()).toBeVisible();
   await expect(page.getByText("Eligibility unclear").first()).toBeVisible();
+  await expect(page.locator('[aria-label*="out of 100"]').first()).toBeVisible();
+  await expect(page.getByText("How fit scores work")).toBeVisible();
+  await expect(page.locator(".listing-freshness").first()).toBeVisible();
   const classYear = page.getByLabel("Eligible class year");
   await classYear.selectOption("junior");
   await expect(page.getByRole("heading", { name: "Mechanical Engineering Intern" })).toBeVisible();
@@ -30,14 +33,16 @@ test("save and track an opportunity with status, notes, and follow-up", async ({
   await page.getByRole("button", { name: /Applications/ }).click();
 
   await expect(page.getByRole("heading", { name: "Application tracker" })).toBeVisible();
-  await page.getByLabel("Application status").selectOption("applied");
+  await page.locator(".tracker-card .tracker-fields select").first().selectOption("applied");
   await page.getByLabel("Follow-up date").fill("2026-10-15");
   await page.getByLabel("Private notes").fill("Tailored resume and portfolio sent.");
-  await expect(page.getByText("applied", { exact: true })).toBeVisible();
+  await expect(page.locator(".tracker-card .tracker-footer .status-applied")).toBeVisible();
+  await expect(page.getByText("Status history")).toBeVisible();
+  await expect(page.getByText("Current")).toBeVisible();
 
   await page.reload();
   await page.getByRole("button", { name: /Applications/ }).click();
-  await expect(page.getByLabel("Application status")).toHaveValue("applied");
+  await expect(page.locator(".tracker-card .tracker-fields select").first()).toHaveValue("applied");
   await expect(page.getByLabel("Follow-up date")).toHaveValue("2026-10-15");
   await expect(page.getByLabel("Private notes")).toHaveValue("Tailored resume and portfolio sent.");
 });

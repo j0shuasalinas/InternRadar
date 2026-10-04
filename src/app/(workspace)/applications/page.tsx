@@ -4,7 +4,7 @@ import { z } from "zod";
 import { removeApplicationAction, updateApplicationAction } from "@/app/actions/workspace";
 import { requireAuthenticatedUser } from "@/lib/auth";
 import { applicationStatuses } from "@/lib/domain";
-import type { TrackedApplicationWithOpportunity } from "@/lib/database.types";
+import type { ApplicationStatusHistoryRecord, TrackedApplicationWithOpportunity } from "@/lib/database.types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const statusSchema = z.enum(applicationStatuses);
@@ -39,6 +39,20 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
 
   if (error) return <DataLoadError />;
   const rows = (data ?? []) as unknown as TrackedApplicationWithOpportunity[];
+  const historyResult = rows.length
+    ? await supabase.from("application_status_history")
+      .select("id,tracked_application_id,previous_status,new_status,changed_at")
+      .in("tracked_application_id", rows.map(({ id }) => id))
+      .order("changed_at", { ascending: false })
+      .limit(1000)
+    : { data: [], error: null };
+  if (historyResult.error) return <DataLoadError />;
+  const historyByApplication = new Map<string, ApplicationStatusHistoryRecord[]>();
+  for (const item of (historyResult.data ?? []) as ApplicationStatusHistoryRecord[]) {
+    const events = historyByApplication.get(item.tracked_application_id) ?? [];
+    if (events.length < 4) events.push(item);
+    historyByApplication.set(item.tracked_application_id, events);
+  }
   const visible = rows.filter((row) => {
     const listing = row.opportunities;
     const matchesQuery = !query || `${listing?.company ?? ""} ${listing?.title ?? ""}`.toLowerCase().includes(query);
@@ -61,10 +75,23 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
           <label className="notes-field">Private notes<textarea name="notes" defaultValue={row.notes} maxLength={3000} rows={2} placeholder="What did you send? Who should you follow up with?" /></label>
           <div className="tracker-footer"><span className={`status-pill status-${row.status}`}>{row.status}</span><span><CalendarDays size={12} /> Deadline: {displayDeadline(listing?.deadline_date ?? null, listing?.deadline_at ?? null)}</span><button className="inline-link" type="submit">Save changes <ArrowRight size={13} /></button></div>
         </form>
+        <StatusHistory entries={historyByApplication.get(row.id) ?? []} />
         <form action={removeApplicationAction} className="remove-tracked-form"><input type="hidden" name="applicationId" value={row.id} /><button className="text-button" type="submit">Remove from tracker</button></form>
       </article>;
     })}</div> : <div className="empty-state"><span className="empty-icon"><Bookmark size={20} /></span><h2>{rows.length ? "No tracked roles match." : "Your tracker is ready."}</h2><p>{rows.length ? "Clear the search or status filter to see everything." : "Save a published opportunity from Discover and it will appear here."}</p>{!rows.length && <Link className="button button-blue" href="/discover">Discover opportunities <ArrowRight size={14} /></Link>}</div>}
   </>;
+}
+
+function StatusHistory({ entries }: { entries: ApplicationStatusHistoryRecord[] }) {
+  if (!entries.length) return null;
+  return <div className="status-history" aria-label="Application status history">
+    <strong>Status history</strong>
+    <ol>{entries.map((entry, index) => <li key={entry.id}>
+      <span className={`status-pill status-${entry.new_status}`}>{entry.previous_status ? `${entry.previous_status} → ${entry.new_status}` : `Added as ${entry.new_status}`}</span>
+      <time dateTime={entry.changed_at}>{new Date(entry.changed_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>
+      {index === 0 && <span className="history-current">Latest</span>}
+    </li>)}</ol>
+  </div>;
 }
 
 function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action: React.ReactNode }) {

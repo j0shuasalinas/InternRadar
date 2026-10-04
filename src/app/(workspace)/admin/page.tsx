@@ -1,7 +1,7 @@
 import { CircleHelp, ShieldCheck } from "lucide-react";
 import { saveOpportunityAdminAction } from "@/app/actions/admin";
 import { requireAdmin } from "@/lib/auth";
-import { classYears } from "@/lib/domain";
+import { classYears, getListingFreshness } from "@/lib/domain";
 import type { OpportunityRecord } from "@/lib/database.types";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -13,19 +13,28 @@ function first(value: string | string[] | undefined): string | undefined {
 export default async function AdminPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const { supabase } = await requireAdmin();
   const params = await searchParams;
-  const { data, error } = await supabase.from("opportunities").select("*").order("updated_at", { ascending: false }).limit(100);
-  if (error) return <div className="data-error" role="alert"><CircleHelp size={20} /><div><strong>Opportunity listings could not be loaded.</strong><p>Check the Supabase migration and database policies.</p></div></div>;
-  const listings = (data ?? []) as unknown as OpportunityRecord[];
+  const staleBefore = new Date(new Date().getTime() - 15 * 86_400_000).toISOString();
+  const [listingsResult, freshnessResult] = await Promise.all([
+    supabase.from("opportunities").select("*").order("updated_at", { ascending: false }).limit(100),
+    supabase.from("opportunities").select("id", { count: "exact", head: true })
+      .eq("status", "published").eq("is_demo", false).lte("last_verified_at", staleBefore),
+  ]);
+  if (listingsResult.error || freshnessResult.error) return <div className="data-error" role="alert"><CircleHelp size={20} /><div><strong>Opportunity listings could not be loaded.</strong><p>Check the Supabase migration and database policies.</p></div></div>;
+  const listings = (listingsResult.data ?? []) as unknown as OpportunityRecord[];
   const message = first(params.message);
   const errorCode = first(params.error);
 
   return <>
     <div className="page-heading"><div><span className="section-label">ADMINISTRATION</span><h1>Opportunity management</h1><p>Create, verify, publish, edit, or close curated listings.</p></div><span className="admin-marker"><ShieldCheck size={15} /> Admin access</span></div>
-    {message && <p className="form-message form-success" role="status">Listing saved and verification timestamp updated.</p>}
-    {errorCode && <p className="form-message form-error" role="alert">{errorCode === "duplicate" ? "That canonical source identifier is already in use." : "The listing could not be saved. Check all fields and try again."}</p>}
+    {message && <p className="form-message form-success" role="status">Listing saved. The verification date changes only when the original source is confirmed.</p>}
+    {errorCode && <p className="form-message form-error" role="alert">{errorCode === "duplicate" ? "That canonical source identifier is already in use." : errorCode === "verification" ? "Confirm you re-checked the original source before saving a published listing." : "The listing could not be saved. Check all fields and try again."}</p>}
     <section className="admin-create-panel"><div className="admin-section-heading"><div><span className="section-label">NEW LISTING</span><h2>Add an opportunity</h2></div></div><OpportunityForm /></section>
+    <p className={`freshness-summary${freshnessResult.count ? " has-stale" : ""}`} role="status">{freshnessResult.count ?? 0} published production listing{freshnessResult.count === 1 ? "" : "s"} need re-verification (last checked over 14 days ago).</p>
     <section className="admin-listings"><div className="admin-section-heading"><div><span className="section-label">CURATED DATA</span><h2>Existing listings <span>{listings.length}</span></h2></div></div>
-      {listings.length ? <div className="admin-list">{listings.map((listing) => <details className="admin-listing" key={listing.id}><summary><span className={`status-pill status-${listing.status}`}>{listing.status}</span><span className="admin-listing-name"><strong>{listing.title}</strong><small>{listing.company} · Verified {new Date(listing.last_verified_at).toLocaleDateString()}</small></span><span className="admin-listing-mode">{listing.is_demo ? "LOCAL DEMO" : "PRODUCTION"}</span></summary><OpportunityForm listing={listing} /></details>)}</div> : <p className="admin-empty">No curated listings yet. Add the first listing above.</p>}
+      {listings.length ? <div className="admin-list">{listings.map((listing) => {
+        const freshness = getListingFreshness(listing.last_verified_at);
+        return <details className="admin-listing" key={listing.id}><summary><span className={`status-pill status-${listing.status}`}>{listing.status}</span><span className="admin-listing-name"><strong>{listing.title}</strong><small>{listing.company} · Verified {new Date(listing.last_verified_at).toLocaleDateString()}</small></span><span className={`freshness-pill freshness-${freshness.state}`}>{freshness.state === "fresh" ? "Recent check" : freshness.state === "due" ? "Re-check due" : "Stale · re-check"}</span><span className="admin-listing-mode">{listing.is_demo ? "LOCAL DEMO" : "PRODUCTION"}</span></summary><OpportunityForm listing={listing} /></details>;
+      })}</div> : <p className="admin-empty">No curated listings yet. Add the first listing above.</p>}
     </section>
   </>;
 }
@@ -50,6 +59,7 @@ function OpportunityForm({ listing }: { listing?: OpportunityRecord }) {
       <label>Deadline date<input name="deadlineDate" type="date" defaultValue={listing?.deadline_date ?? ""} /><small>Date only; no time inferred.</small></label>
       <label>Exact deadline timestamp<input name="deadlineAt" type="text" defaultValue={listing?.deadline_at ?? ""} placeholder="2026-12-01T17:00:00-05:00" /><small>ISO 8601 with UTC offset. Use only if the source gives a time.</small></label>
     </div>
-    <div className="admin-form-footer"><span>Saving records a new last-verified timestamp.</span><button className="button button-dark" type="submit">{listing ? "Save listing" : "Create listing"}</button></div>
+    <label className="verification-confirmation"><input type="checkbox" name="sourceRechecked" /> I checked the original source and confirmed this listing is still open and accurately represented. Published listings require this confirmation.</label>
+    <div className="admin-form-footer"><span>Last verified changes only when you confirm a source check.</span><button className="button button-dark" type="submit">{listing ? "Save listing" : "Create listing"}</button></div>
   </form>;
 }

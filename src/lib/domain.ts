@@ -73,6 +73,10 @@ export type MatchFit = {
   };
   reasons: string[];
 };
+export type ListingFreshness = {
+  state: "fresh" | "due" | "stale";
+  daysSinceVerified: number | null;
+};
 
 export type Opportunity = OpportunityInput & {
   id: string;
@@ -231,6 +235,31 @@ export function rankOpportunitiesByFit(
         left.opportunity.id.localeCompare(right.opportunity.id);
     })
     .map(({ opportunity }) => opportunity);
+}
+
+export function dateKeyInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const dateParts = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  const year = dateParts.year;
+  const month = dateParts.month;
+  const day = dateParts.day;
+  if (!year || !month || !day) throw new Error(`Could not determine calendar date in time zone "${timeZone}".`);
+  return `${year}-${month}-${day}`;
+}
+
+export function getListingFreshness(lastVerifiedAt: string, now = new Date()): ListingFreshness {
+  const verifiedAt = Date.parse(lastVerifiedAt);
+  if (Number.isNaN(verifiedAt)) return { state: "stale", daysSinceVerified: null };
+  const elapsedDays = Math.max(0, Math.floor((now.getTime() - verifiedAt) / 86_400_000));
+  return {
+    state: elapsedDays <= 14 ? "fresh" : elapsedDays <= 30 ? "due" : "stale",
+    daysSinceVerified: elapsedDays,
+  };
 }
 
 export function filterOpportunities(

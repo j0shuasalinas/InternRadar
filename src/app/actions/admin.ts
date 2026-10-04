@@ -29,8 +29,17 @@ export async function saveOpportunityAdminAction(formData: FormData): Promise<vo
   });
 
   if (!id.success || !parsed.success) redirect("/admin?error=validation");
+  const sourceRechecked = formData.get("sourceRechecked") === "on";
+  if (parsed.data.status === "published" && !sourceRechecked) redirect("/admin?error=verification");
   const { user, supabase } = await requireAdmin();
   const opportunity = parsed.data;
+  let lastVerifiedAt = sourceRechecked ? new Date().toISOString() : opportunity.lastVerifiedAt;
+  if (id.data && !sourceRechecked) {
+    const { data: existing, error } = await supabase.from("opportunities")
+      .select("last_verified_at").eq("id", id.data).maybeSingle();
+    if (error || !existing) redirect("/admin?error=save");
+    lastVerifiedAt = existing.last_verified_at;
+  }
   const values = {
     canonical_source_id: opportunity.canonicalSourceId,
     company: opportunity.company,
@@ -46,7 +55,7 @@ export async function saveOpportunityAdminAction(formData: FormData): Promise<vo
     source_url: opportunity.sourceUrl,
     deadline_date: opportunity.deadlineDate,
     deadline_at: opportunity.deadlineAt,
-    last_verified_at: opportunity.lastVerifiedAt,
+    last_verified_at: lastVerifiedAt,
     status: opportunity.status,
     closed_at: opportunity.status === "closed" ? new Date().toISOString() : null,
   };
