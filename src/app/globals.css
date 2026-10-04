@@ -334,6 +334,14 @@
   .opportunity-meta span { display: inline-flex; align-items: center; gap: 4px; }
   .opportunity-meta svg { color: #89969b; }
   .opportunity-actions { display: grid; justify-items: end; gap: 10px; }
+  .match-score { min-width: 88px; display: inline-flex; align-items: baseline; justify-content: center; gap: 5px; padding: 5px 7px; border: 1px solid #dce7e0; border-radius: 5px; background: #f3f8f4; color: #356c52; }
+  .match-score strong { font-size: 15px; font-weight: 760; line-height: 1; }
+  .match-score span { font-size: 9px; font-weight: 680; text-transform: capitalize; }
+  .match-score-promising { border-color: #e8dfc6; background: #fcf8ec; color: #84631c; }
+  .match-score-explore { border-color: #e0e5e6; background: #f4f6f6; color: #62717a; }
+  .score-method { margin: 0 0 12px; color: #64747c; font-size: 10px; }
+  .score-method summary { width: fit-content; color: var(--blue); font-weight: 680; cursor: pointer; }
+  .score-method p { max-width: 800px; margin: 7px 0 0; line-height: 1.6; }
   .save-button { min-height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid #dce3e3; border-radius: 4px; background: #fff; color: #526773; font-size: 10px; font-weight: 680; cursor: pointer; }
   .save-button:hover:not(:disabled) { border-color: #aabbd0; background: #f6f8fc; color: var(--blue); }
   .save-button:disabled { border-color: #cee4db; background: #edf6f2; color: #28745f; cursor: default; }

@@ -4,7 +4,7 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight, Bell, Bookmark, BriefcaseBusiness, Building2, CalendarDays, Check, ChevronDown, CircleHelp, Clock3, Compass, ExternalLink, Filter, LayoutDashboard, MapPin, Radar, Search, Settings2, Sparkles, X } from "lucide-react";
 import { z } from "zod";
-import { applicationStatuses, evaluateEligibility, filterOpportunities, getMatchReasons, preferencesSchema, type ApplicationStatus, type ClassYear, type Opportunity, type Preferences } from "@/lib/domain";
+import { applicationStatuses, calculateMatchFit, evaluateEligibility, filterOpportunities, getMatchReasons, preferencesSchema, type ApplicationStatus, type ClassYear, type Opportunity, type Preferences } from "@/lib/domain";
 
 const trackedSchema = z.object({
   opportunityId: z.string(),
@@ -108,6 +108,10 @@ export default function DemoWorkspace({ opportunities }: { opportunities: Opport
   const [applicationQuery, setApplicationQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [settingsMessage, setSettingsMessage] = useState("");
+  const rankingProfile: Preferences = {
+    ...state.profile,
+    currentClassYear: classYearFilter || state.profile.currentClassYear,
+  };
 
   const discovery = filterOpportunities(opportunities, {
     query: search,
@@ -118,7 +122,7 @@ export default function DemoWorkspace({ opportunities }: { opportunities: Opport
     deadlineBefore: deadlineBefore || undefined,
     page,
     pageSize: 3,
-  }, { includeDemo: true });
+  }, { includeDemo: true, profile: rankingProfile, rankByFit: true });
   const tracked = state.applications.map((entry) => ({ ...entry, opportunity: opportunities.find(({ id }) => id === entry.opportunityId) })).filter((entry) => entry.opportunity);
   const visibleApplications = tracked.filter(({ opportunity, status }) => {
     const matchesQuery = `${opportunity?.company} ${opportunity?.title}`.toLowerCase().includes(applicationQuery.toLowerCase());
@@ -192,7 +196,7 @@ export default function DemoWorkspace({ opportunities }: { opportunities: Opport
           {view === "overview" && <OverviewView state={state} opportunities={opportunities} onNavigate={setView} />}
           {view === "discover" && <DiscoverView
             opportunities={discovery.items} total={discovery.total} page={discovery.page} pageCount={discovery.pageCount}
-            profile={state.profile} trackedIds={new Set(state.applications.map(({ opportunityId }) => opportunityId))}
+            profile={rankingProfile} trackedIds={new Set(state.applications.map(({ opportunityId }) => opportunityId))}
             search={search} classYear={classYearFilter} onClassYear={(value) => { setClassYearFilter(value); setPage(1); }} onSearch={(value) => { setSearch(value); setPage(1); }}
             workMode={workMode} onWorkMode={(value) => { setWorkMode(value); setPage(1); }}
             compensation={compensation} onCompensation={(value) => { setCompensation(value); setPage(1); }}
@@ -279,6 +283,7 @@ function DiscoverView(props: {
       <label className="date-filter"><CalendarDays size={15} /><span className="sr-only">Deadline before</span><input type="date" value={props.deadlineBefore} onChange={(event) => props.onDeadline(event.target.value)} aria-label="Deadline before" /></label>
     </div>
     <div className="results-line"><span><Filter size={14} /> {props.total} fictional sample{props.total === 1 ? "" : "s"} for {props.classYear || "all class years"}</span><span>Eligibility checked against source notes</span></div>
+    <details className="score-method"><summary>How fit scores work</summary><p>Scores use source-stated eligibility (40 confirmed, 24 undergraduate-only, 10 unclear), major match (20), each of up to five matching skills (5 each), preferred location (10), and preferred work mode (5). A score explains profile overlap; it does not guarantee selection or eligibility beyond the source.</p></details>
     {props.opportunities.length ? <div className="opportunity-list">{props.opportunities.map((opportunity) => <OpportunityCard key={opportunity.id} opportunity={opportunity} profile={props.profile} isTracked={props.trackedIds.has(opportunity.id)} onSave={() => props.onSave(opportunity.id)} />)}</div> : <div className="empty-state"><span className="empty-icon"><Search size={21} /></span><h2>No sample roles match those filters.</h2><p>Try a different search, location, or deadline.</p><button type="button" className="button button-quiet" onClick={() => { props.onSearch(""); props.onClassYear(""); props.onWorkMode(""); props.onCompensation(""); props.onDeadline(""); props.onLocation(""); }}>Clear filters <X size={14} /></button></div>}
     {props.pageCount > 1 && <div className="pagination"><button type="button" disabled={props.page <= 1} onClick={() => props.onPage(props.page - 1)}>Previous</button><span>Page {props.page} of {props.pageCount}</span><button type="button" disabled={props.page >= props.pageCount} onClick={() => props.onPage(props.page + 1)}>Next <ArrowRight size={14} /></button></div>}
   </>;
@@ -287,11 +292,12 @@ function DiscoverView(props: {
 function OpportunityCard({ opportunity, profile, isTracked, onSave }: { opportunity: Opportunity; profile: Preferences; isTracked: boolean; onSave: () => void }) {
   const eligibility = eligibilityText(opportunity, profile);
   const reasons = getMatchReasons(opportunity, profile).slice(0, 3);
+  const fit = calculateMatchFit(opportunity, profile);
   return <article className="opportunity-card">
     <div className="opportunity-main">
       <span className="company-stamp company-stamp-large">{opportunity.company.slice(0, 1)}</span>
       <div className="opportunity-title-block"><span className="company-name"><Building2 size={13} /> {opportunity.company}</span><h2>{opportunity.title}</h2><div className="opportunity-meta"><span><MapPin size={13} />{opportunity.location}</span><span><BriefcaseBusiness size={13} />{opportunity.workMode}</span><span><Clock3 size={13} />{opportunity.compensationType === "unknown" ? "Compensation not listed" : opportunity.compensationDetails ?? opportunity.compensationType}</span></div></div>
-      <div className="opportunity-actions"><span className={`eligibility-badge ${eligibility.className}`}>{eligibility.className === "badge-confirmed" ? <Check size={12} /> : eligibility.className === "badge-potential" ? <Sparkles size={12} /> : <CircleHelp size={12} />}{eligibility.label}</span><button type="button" className={`save-button${isTracked ? " is-saved" : ""}`} onClick={onSave} disabled={isTracked} aria-label={isTracked ? `Saved ${opportunity.title}` : `Save ${opportunity.title}`}>{isTracked ? <Check size={15} /> : <Bookmark size={15} />}<span>{isTracked ? "Saved" : "Save role"}</span></button></div>
+      <div className="opportunity-actions"><span className={`match-score match-score-${fit.tier}`} aria-label={`${fit.tier} match, ${fit.score} out of 100`}><strong>{fit.score}</strong><span>{fit.tier} fit</span></span><span className={`eligibility-badge ${eligibility.className}`}>{eligibility.className === "badge-confirmed" ? <Check size={12} /> : eligibility.className === "badge-potential" ? <Sparkles size={12} /> : <CircleHelp size={12} />}{eligibility.label}</span><button type="button" className={`save-button${isTracked ? " is-saved" : ""}`} onClick={onSave} disabled={isTracked} aria-label={isTracked ? `Saved ${opportunity.title}` : `Save ${opportunity.title}`}>{isTracked ? <Check size={15} /> : <Bookmark size={15} />}<span>{isTracked ? "Saved" : "Save role"}</span></button></div>
     </div>
     <div className="opportunity-bottom"><div className="match-reasons"><span className="section-label">WHY IT MATCHES</span><div>{reasons.map((reason) => <span key={reason}><Check size={12} />{reason}</span>)}</div></div><div className="listing-detail"><span>Deadline <strong>{prettyDate(opportunity.deadlineDate)}</strong></span><span>Verified <strong>{prettyDate(opportunity.lastVerifiedAt.slice(0, 10))}</strong></span><a href={opportunity.sourceUrl} target="_blank" rel="noreferrer">Source details <ExternalLink size={12} /></a></div></div>
     <div className="fictional-label">FICTIONAL LOCAL SAMPLE · NOT AN OPEN INTERNSHIP</div>

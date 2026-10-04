@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateEligibility, filterOpportunities, getMatchReasons, isSafeExternalUrl, opportunityInputSchema, preferencesSchema, type Opportunity, type Preferences } from "@/lib/domain";
+import { calculateMatchFit, evaluateEligibility, filterOpportunities, getMatchReasons, isSafeExternalUrl, opportunityInputSchema, preferencesSchema, rankOpportunitiesByFit, type Opportunity, type Preferences } from "@/lib/domain";
 
 const profile: Preferences = {
   graduationYear: 2028,
@@ -58,6 +58,65 @@ describe("eligibility and preference matching", () => {
       "Matches a preferred location.",
       "Matches your hybrid preference.",
     ]));
+  });
+
+  it("scores only explicit eligibility and profile matches using documented weights", () => {
+    const fit = calculateMatchFit(listing(), profile);
+
+    expect(fit.score).toBe(65);
+    expect(fit.tier).toBe("promising");
+    expect(fit.breakdown).toEqual({
+      eligibility: 40,
+      major: 0,
+      skills: 10,
+      location: 10,
+      workMode: 5,
+    });
+    expect(fit.reasons).toContain("Class year is explicitly confirmed by the source.");
+    expect(fit.reasons).toContain("Matching skills: TypeScript, SQL.");
+  });
+
+  it("caps skill contribution and never promotes unclear eligibility to confirmed", () => {
+    const matchingProfile = {
+      ...profile,
+      major: "Computer Science",
+      skills: ["TypeScript", "SQL", "data", "tools", "student", "research"],
+    };
+    const highFit = calculateMatchFit(
+      listing({ description: "Computer Science students build TypeScript SQL data tools for research." }),
+      matchingProfile,
+    );
+    const unclearFit = calculateMatchFit(
+      listing({ eligibilityBasis: "unclear", eligibleClassYears: [] }),
+      profile,
+    );
+
+    expect(highFit.score).toBe(100);
+    expect(highFit.tier).toBe("strong");
+    expect(highFit.breakdown.skills).toBe(25);
+    expect(unclearFit.breakdown.eligibility).toBe(10);
+    expect(unclearFit.reasons).toContain("Source does not state eligible class years.");
+  });
+
+  it("ranks all opportunities by fit before applying pagination", () => {
+    const unclear = listing({
+      id: "unclear",
+      eligibilityBasis: "unclear",
+      eligibleClassYears: [],
+      eligibilityNotes: "Source does not state class years.",
+      description: "A role with no matching terms.",
+      location: "Chicago",
+      workMode: "onsite",
+    });
+    const results = filterOpportunities(
+      [unclear, listing()],
+      { page: 1, pageSize: 1 },
+      { profile, rankByFit: true, now: new Date("2026-09-30T00:00:00Z") },
+    );
+
+    expect(results.items.map(({ id }) => id)).toEqual(["opportunity-1"]);
+    expect(rankOpportunitiesByFit([unclear, listing()], profile).map(({ id }) => id))
+      .toEqual(["opportunity-1", "unclear"]);
   });
 });
 

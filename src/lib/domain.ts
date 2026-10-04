@@ -61,6 +61,18 @@ export type ApplicationStatus = z.infer<typeof applicationStatusSchema>;
 export type Preferences = z.infer<typeof preferencesSchema>;
 export type OpportunityInput = z.infer<typeof opportunityInputSchema>;
 export type Eligibility = "confirmed" | "potential" | "unclear" | "not_eligible";
+export type MatchFit = {
+  score: number;
+  tier: "strong" | "promising" | "explore";
+  breakdown: {
+    eligibility: number;
+    major: number;
+    skills: number;
+    location: number;
+    workMode: number;
+  };
+  reasons: string[];
+};
 
 export type Opportunity = OpportunityInput & {
   id: string;
@@ -161,10 +173,70 @@ export function getMatchReasons(opportunity: Opportunity, profile: Preferences):
   return reasons;
 }
 
+export function calculateMatchFit(opportunity: Opportunity, profile: Preferences): MatchFit {
+  const eligibility = evaluateEligibility(opportunity, profile);
+  const roleText = `${opportunity.title} ${opportunity.description}`.toLowerCase();
+  const majorMatches = roleText.includes(profile.major.toLowerCase());
+  const matchedSkills = [...new Set(profile.skills.map((skill) => skill.trim()).filter(Boolean))]
+    .filter((skill) => roleText.includes(skill.toLowerCase()));
+  const locationMatches = profile.preferredLocations.some((location) =>
+    `${opportunity.location} ${opportunity.workMode}`.toLowerCase().includes(location.toLowerCase()),
+  );
+  const workModeMatches = profile.remotePreference !== "any" &&
+    opportunity.workMode === profile.remotePreference;
+
+  const breakdown = {
+    eligibility: eligibility === "confirmed" ? 40 : eligibility === "potential" ? 24 : eligibility === "unclear" ? 10 : 0,
+    major: majorMatches ? 20 : 0,
+    skills: Math.min(matchedSkills.length, 5) * 5,
+    location: locationMatches ? 10 : 0,
+    workMode: workModeMatches ? 5 : 0,
+  };
+  const score = Object.values(breakdown).reduce((total, value) => total + value, 0);
+  const reasons = [
+    eligibility === "confirmed"
+      ? "Class year is explicitly confirmed by the source."
+      : eligibility === "potential"
+        ? "Source mentions undergraduates, but not individual class years."
+        : eligibility === "unclear"
+          ? "Source does not state eligible class years."
+          : "Your class year is not listed as eligible.",
+    ...(majorMatches ? [`Role text mentions your major: ${profile.major}.`] : []),
+    ...(matchedSkills.length ? [`Matching skills: ${matchedSkills.slice(0, 5).join(", ")}.`] : []),
+    ...(locationMatches ? ["Matches a preferred location."] : []),
+    ...(workModeMatches ? [`Matches your ${profile.remotePreference} work-mode preference.`] : []),
+  ];
+
+  return {
+    score,
+    tier: score >= 75 ? "strong" : score >= 55 ? "promising" : "explore",
+    breakdown,
+    reasons,
+  };
+}
+
+export function rankOpportunitiesByFit(
+  opportunities: Opportunity[],
+  profile: Preferences,
+): Opportunity[] {
+  return opportunities
+    .map((opportunity) => ({ opportunity, fit: calculateMatchFit(opportunity, profile) }))
+    .sort((left, right) => {
+      const scoreDifference = right.fit.score - left.fit.score;
+      if (scoreDifference) return scoreDifference;
+      const leftDeadline = left.opportunity.deadlineAt ?? left.opportunity.deadlineDate ?? "9999-12-31";
+      const rightDeadline = right.opportunity.deadlineAt ?? right.opportunity.deadlineDate ?? "9999-12-31";
+      const deadlineDifference = leftDeadline.localeCompare(rightDeadline);
+      return deadlineDifference || right.opportunity.lastVerifiedAt.localeCompare(left.opportunity.lastVerifiedAt) ||
+        left.opportunity.id.localeCompare(right.opportunity.id);
+    })
+    .map(({ opportunity }) => opportunity);
+}
+
 export function filterOpportunities(
   opportunities: Opportunity[],
   filters: OpportunityFilters,
-  options: { includeDemo?: boolean; now?: Date } = {},
+  options: { includeDemo?: boolean; now?: Date; profile?: Preferences; rankByFit?: boolean } = {},
 ): { items: Opportunity[]; total: number; page: number; pageCount: number } {
   const pageSize = Math.min(Math.max(filters.pageSize ?? 10, 1), 50);
   const page = Math.max(filters.page ?? 1, 1);
@@ -183,9 +255,12 @@ export function filterOpportunities(
     return true;
   });
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const ordered = options.rankByFit && options.profile
+    ? rankOpportunitiesByFit(filtered, options.profile)
+    : filtered;
+  const pageCount = Math.max(1, Math.ceil(ordered.length / pageSize));
   const safePage = Math.min(page, pageCount);
   const start = (safePage - 1) * pageSize;
 
-  return { items: filtered.slice(start, start + pageSize), total: filtered.length, page: safePage, pageCount };
+  return { items: ordered.slice(start, start + pageSize), total: ordered.length, page: safePage, pageCount };
 }
